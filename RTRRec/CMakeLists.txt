@@ -5,4 +5,4 @@ target_sources( RTRRec
 
 add_subdirectory( peripherals )
 
-target_link_libraries( RTRRec PUBLIC FreeRTOS )
+#target_link_libraries( RTRRec PUBLIC FreeRTOS )
