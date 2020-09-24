@@ -1,0 +1,9 @@
+{
+    "configurations": [
+        {
+            "name": "PIC18F25K83",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}

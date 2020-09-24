@@ -1,0 +1,6 @@
+[
+	{
+		"name": "xc8-cc",
+		"toolchainFile": "../../external/cmake-microchip/toolchain.cmake"
+	}
+]

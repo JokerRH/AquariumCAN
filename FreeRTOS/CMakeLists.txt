@@ -1,0 +1,40 @@
+target_sources( FreeRTOS
+	PUBLIC
+		FreeRTOSConfig.h
+		portmacro.h
+		FreeRTOS/include/atomic.h
+		FreeRTOS/include/croutine.h
+		FreeRTOS/include/deprecated_definitions.h
+		FreeRTOS/include/event_groups.h
+		FreeRTOS/include/FreeRTOS.h
+		FreeRTOS/include/list.h
+		FreeRTOS/include/message_buffer.h
+		FreeRTOS/include/mpu_prototypes.h
+		FreeRTOS/include/mpu_wrappers.h
+		FreeRTOS/include/portable.h
+		FreeRTOS/include/projdefs.h
+		FreeRTOS/include/queue.h
+		FreeRTOS/include/semphr.h
+		FreeRTOS/include/StackMacros.h
+		FreeRTOS/include/stack_macros.h
+		#FreeRTOS/include/stream_buffer.h
+		FreeRTOS/include/task.h
+		FreeRTOS/include/timers.h
+	PRIVATE
+		port.c
+		FreeRTOS/croutine.c
+		FreeRTOS/event_groups.c
+		FreeRTOS/list.c
+		FreeRTOS/queue.c
+		#FreeRTOS/stream_buffer.c
+		FreeRTOS/tasks.c
+		FreeRTOS/timers.c
+		FreeRTOS/portable/MemMang/heap_4.c
+)
+
+target_include_directories( FreeRTOS
+	PUBLIC
+		.
+		FreeRTOS/include
+		FreeRTOS/portable/MPLAB/PIC18F
+)

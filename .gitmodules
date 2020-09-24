@@ -1,0 +1,6 @@
+[submodule "external/cmake-microchip"]
+	path = external/cmake-microchip
+	url = https://github.com/enbyted/cmake-microchip.git
+[submodule "FreeRTOS/FreeRTOS"]
+	path = FreeRTOS/FreeRTOS
+	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git

@@ -1,0 +1,13 @@
+{
+    "cmake.generator": "Ninja",
+    //"cmake.toolset": "xc8-cc",
+    "cmake.configureSettings": {
+        "CMAKE_MAKE_PROGRAM": "C:/Users/Rainer/Documents/ninja/ninja.exe",
+        "MICROCHIP_XC8_PATH": "D:/Program Files/Microchip/xc8/v2.20/bin",
+        "__XC8": 1,
+    },
+    "C_Cpp.default.systemIncludePath": [
+        "D:/Program Files/Microchip/xc8/v2.20/pic/include",
+        "D:/Program Files/Microchip/xc8/v2.20/pic/include/proc"
+    ]
+}
