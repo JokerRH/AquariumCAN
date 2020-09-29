@@ -61,6 +61,9 @@ Changes from V3.2.0
 /* MPLAB library include file. */
 #include "timers.h"
 
+#define STRINGIFY( s )	#s
+asm("GLOBAL _prvIdleTask");
+
 /*-----------------------------------------------------------
  * Implementation of functions defined in portable.h for the PIC port.
  *----------------------------------------------------------*/
@@ -70,7 +73,7 @@ Changes from V3.2.0
 
 /* Initial interrupt enable state for newly created tasks.  This value is
 copied into INTCON when a task switches in for the first time. */
-#define portINITAL_INTERRUPT_STATE			0xc0
+#define portINITAL_INTERRUPT_STATE			0xC0
 
 /* Just the bit within INTCON for the global interrupt flag. */
 #define portGLOBAL_INTERRUPT_FLAG			0x80
@@ -88,7 +91,7 @@ constant defines the size of memory area which must be saved. */
 /* We require the address of the pxCurrentTCB variable, but don't want to know
 any details of its type. */
 typedef void TCB_t;
-extern volatile TCB_t * volatile pxCurrentTCB;
+extern volatile TCB_t *volatile pxCurrentTCB;
 
 /* IO port constants. */
 #define portBIT_SET		( ( uint8_t ) 1 )
@@ -104,7 +107,8 @@ void vSerialRxISR( void );
 /*
  * Perform hardware setup to enable ticks.
  */
-static void prvSetupTimerInterrupt( void );
+//static
+void prvSetupTimerInterrupt( void );
 
 /* 
  * ISR to maintain the tick, and perform tick context switches if the
@@ -117,6 +121,8 @@ static void prvTickISR( void );
  * the actual interrupt.
  */
 static void prvLowInterrupt( void );
+
+uint8_t ucCriticalCount = 0;
 
 /* 
  * Macro that pushes all the registers that make up the context of a task onto
@@ -143,326 +149,72 @@ static void prvLowInterrupt( void );
  * this is sufficient for your needs.  It is not clear whether this size is 
  * fixed for all compilations or has the potential to be program specific.
  */
-#define	portSAVE_CONTEXT( ucForcedInterruptFlags )								\
-{																				\
-	/* Save the status and WREG registers first, as these will get modified		\
-	by the operations below. */													\
-	asm( "MOVFF	WREG, PREINC1" );												\
-	asm( "MOVFF   STATUS, PREINC1" );											\
-	/* Save the INTCON register with the appropriate bits forced if				\
-	necessary - as described above. */											\
-	asm( "MOVFF	INTCON, WREG" );												\
-	asm( "IORLW	ucForcedInterruptFlags" );										\
-	asm( "MOVFF	WREG, PREINC1" );												\
-																				\
-	portDISABLE_INTERRUPTS();													\
-																				\
-	/* Store the necessary registers to the stack. */							\
-	asm( "MOVFF	BSR, PREINC1" );												\
-	asm( "MOVFF	FSR2L, PREINC1" );												\
-	asm( "MOVFF	FSR2H, PREINC1" );												\
-	asm( "MOVFF	FSR0L, PREINC1" );												\
-	asm( "MOVFF	FSR0H, PREINC1" );												\
-	asm( "MOVFF	TABLAT, PREINC1" );												\
-	asm( "MOVFF	TBLPTRU, PREINC1" );											\
-	asm( "MOVFF	TBLPTRH, PREINC1" );											\
-	asm( "MOVFF	TBLPTRL, PREINC1" );											\
-	asm( "MOVFF	PRODH, PREINC1" );												\
-	asm( "MOVFF	PRODL, PREINC1" );												\
-	asm( "MOVFF	PCLATU, PREINC1" );												\
-	asm( "MOVFF	PCLATH, PREINC1" );												\
-	/* Store the .tempdata and MATH_DATA areas as described above. */			\
-	asm( "CLRF	FSR0L, 0" );													\
-	asm( "CLRF	FSR0H, 0" );													\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	POSTINC0, PREINC1" );											\
-	asm( "MOVFF	INDF0, PREINC1" );												\
-	asm( "MOVFF	FSR0L, PREINC1" );												\
-	asm( "MOVFF	FSR0H, PREINC1" );												\
-	/* Store the hardware stack pointer in a temp register before we			\
-	modify it. */																\
-	asm( "MOVFF	STKPTR, FSR0L" );												\
-																				\
-		/* Store each address from the hardware stack. */						\
-	while( STKPTR > ( uint8_t ) 0 )												\
-	{																			\
-		asm( "MOVFF	TOSL, PREINC1" );											\
-		asm( "MOVFF	TOSH, PREINC1" );											\
-		asm( "MOVFF	TOSU, PREINC1" );											\
-		asm( "POP" );															\
-	}																			\
-																				\
-	/* Store the number of addresses on the hardware stack (from the			\
-	temporary register). */														\
-	asm( "MOVFF	FSR0L, PREINC1" );												\
-	asm( "MOVF	PREINC1, 1, 0" );												\
-																				\
-	/* Save the new top of the software stack in the TCB. */					\
-	asm( "MOVFF	pxCurrentTCB, FSR0L" );											\
-	asm( "MOVFF	pxCurrentTCB + 1, FSR0H" );										\
-	asm( "MOVFF	FSR1L, POSTINC0" );												\
-	asm( "MOVFF	FSR1H, POSTINC0" );												\
-}
-/*-----------------------------------------------------------*/
-
-/*
- * This is the reverse of portSAVE_CONTEXT.  See portSAVE_CONTEXT for more
- * details.
- */
-#define portRESTORE_CONTEXT()													\
-{																				\
-	/* Set FSR0 to point to pxCurrentTCB->pxTopOfStack. */						\
-	asm( "MOVFF	pxCurrentTCB, FSR0L" );											\
-	asm( "MOVFF	pxCurrentTCB + 1, FSR0H" );										\
-																				\
-	/* De-reference FSR0 to set the address it holds into FSR1.					\
-	(i.e. *( pxCurrentTCB->pxTopOfStack ) ). */									\
-	asm( "MOVFF	POSTINC0, FSR1L" );												\
-	asm( "MOVFF	POSTINC0, FSR1H" );												\
-																				\
-	/* How many return addresses are there on the hardware stack?  Discard		\
-	the first byte as we are pointing to the next free space. */				\
-	asm( "MOVFF	POSTDEC1, FSR0L" );												\
-	asm( "MOVFF	POSTDEC1, FSR0L" );												\
-																				\
-	/* Fill the hardware stack from our software stack. */						\
-	STKPTR = 0;																	\
-																				\
-	while( STKPTR < FSR0L )														\
-	{																			\
-		asm( "PUSH" );															\
-		asm( "MOVF	POSTDEC1, 0, 0" );											\
-		asm( "MOVWF	TOSU, 0" );													\
-		asm( "MOVF	POSTDEC1, 0, 0" );											\
-		asm( "MOVWF	TOSH, 0" );													\
-		asm( "MOVF	POSTDEC1, 0, 0" );											\
-		asm( "MOVWF	TOSL, 0" );													\
-	}																			\
-																				\
-	/* Restore the .tmpdata and MATH_DATA memory. */							\
-	asm( "MOVFF	POSTDEC1, FSR0H" );												\
-	asm( "MOVFF	POSTDEC1, FSR0L" );												\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, POSTDEC0" );											\
-	asm( "MOVFF	POSTDEC1, INDF0" );												\
-	/* Restore the other registers forming the tasks context. */				\
-	asm( "MOVFF	POSTDEC1, PCLATH" );											\
-	asm( "MOVFF	POSTDEC1, PCLATU" );											\
-	asm( "MOVFF	POSTDEC1, PRODL" );												\
-	asm( "MOVFF	POSTDEC1, PRODH" );												\
-	asm( "MOVFF	POSTDEC1, TBLPTRL" );											\
-	asm( "MOVFF	POSTDEC1, TBLPTRH" );											\
-	asm( "MOVFF	POSTDEC1, TBLPTRU" );											\
-	asm( "MOVFF	POSTDEC1, TABLAT" );											\
-	asm( "MOVFF	POSTDEC1, FSR0H" );												\
-	asm( "MOVFF	POSTDEC1, FSR0L" );												\
-	asm( "MOVFF	POSTDEC1, FSR2H" );												\
-	asm( "MOVFF	POSTDEC1, FSR2L" );												\
-	asm( "MOVFF	POSTDEC1, BSR" );												\
-	/* The next byte is the INTCON register.  Read this into WREG as some		\
-	asm( "manipulation is required. */											\
-	asm( "MOVFF	POSTDEC1, WREG" );												\
-																				\
-	/* From the INTCON register, only the interrupt enable bits form part		\
-	of the tasks context.  It is perfectly legitimate for another task to		\
-	have modified any other bits.  We therefore only restore the top two bits.	\
-	*/																			\
-	if( WREG & portGLOBAL_INTERRUPT_FLAG )										\
-	{																			\
-		asm( "MOVFF	POSTDEC1, STATUS" );										\
-		asm( "MOVFF	POSTDEC1, WREG" );											\
-		/* Return enabling interrupts. */										\
-		asm( "RETFIE	0" );													\
-	}																			\
-	else																		\
-	{																			\
-		asm( "MOVFF	POSTDEC1, STATUS" );										\
-		asm( "MOVFF	POSTDEC1, WREG" );											\
-		/* Return without effecting interrupts.  The context may have			\
-		been saved from a critical region. */									\
-		asm( "RETURN	0" );													\
-	}																			\
-}
-/*-----------------------------------------------------------*/
 
 /* 
  * See header file for description. 
  */
+#define PORT_PUSH( x )  do{ *pxTopOfStack = ( x ); pxTopOfStack++; } while( 0 )
 StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t pxCode, void *pvParameters )
 {
-uint32_t ulAddress;
-uint8_t ucBlock;
+    uint32_t ulAddress;
+    uint8_t ucBlock;
 
 	/* Place a few bytes of known values on the bottom of the stack. 
 	This is just useful for debugging. */
+    PORT_PUSH( 0x11 );
+    PORT_PUSH( 0x22 );
+    PORT_PUSH( 0x33 );
 
-	*pxTopOfStack = 0x11;
-	pxTopOfStack++;
-	*pxTopOfStack = 0x22;
-	pxTopOfStack++;
-	*pxTopOfStack = 0x33;
-	pxTopOfStack++;
-
-
-	/* Simulate how the stack would look after a call to vPortYield() generated
-	by the compiler. 
-
-	First store the function parameters.  This is where the task will expect to
-	find them when it starts running. */
-	ulAddress = ( uint32_t ) pvParameters;
-	*pxTopOfStack = ( StackType_t ) ( ulAddress & ( uint32_t ) 0x00ff );
-	pxTopOfStack++;
-
-	ulAddress >>= 8;
-	*pxTopOfStack = ( StackType_t ) ( ulAddress & ( uint32_t ) 0x00ff );
-	pxTopOfStack++;
+	/*
+        Simulate how the stack would look after a call to vPortYield() generated by the compiler. 
+        First store the function parameters.  This is where the task will expect to find them when it starts running.
+    */
+	ulAddress = (uint32_t) pvParameters;
+    PORT_PUSH( (StackType_t) ( ulAddress & ( uint32_t ) 0x00ff ) );
+    ulAddress >>= 8;
+    PORT_PUSH( (StackType_t) ( ulAddress & ( uint32_t ) 0x00ff ) );
 
 	/* Next we just leave a space.  When a context is saved the stack pointer
 	is incremented before it is used so as not to corrupt whatever the stack
 	pointer is actually pointing to.  This is especially necessary during 
 	function epilogue code generated by the compiler. */
-	*pxTopOfStack = 0x44;
-	pxTopOfStack++;
+	PORT_PUSH( 0x44 );
 
 	/* Next are all the registers that form part of the task context. */
+    PORT_PUSH( 0xcc );                          //STATUS
+    PORT_PUSH( 0x66 );                          //WREG
+	PORT_PUSH( 0x11 );                          //BSR
+    PORT_PUSH( 0x00 );                          //PCLATH
+    PORT_PUSH( 0x00 );                          //PCLATU
+    PORT_PUSH( 0x44 );                          //FSR0L
+	PORT_PUSH( 0x55 );                          //FSR0H
+    PORT_PUSH( 0x44 );                          //FSR1L
+	PORT_PUSH( 0x55 );                          //FSR1H
+	PORT_PUSH( 0x22 );                          //FSR2L
+	PORT_PUSH( 0x33 );                          //FSR2H
+    PORT_PUSH( 0xbb );                          //PRODL
+    PORT_PUSH( 0xaa );                          //PRODH
+	PORT_PUSH( 0x66 ); //TABLAT
+    PORT_PUSH( 0x99 ); //TBLPTRUL
+    PORT_PUSH( 0x88 ); //TBLPTRUH
+	PORT_PUSH( 0x00 ); //TBLPTRU
 	
-	*pxTopOfStack = ( StackType_t ) 0x66; /* WREG. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0xcc; /* Status. */
-	pxTopOfStack++;
-
-	/* INTCON is saved with interrupts enabled. */
-	*pxTopOfStack = ( StackType_t ) portINITAL_INTERRUPT_STATE; /* INTCON */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x11; /* BSR. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x22; /* FSR2L. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x33; /* FSR2H. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x44; /* FSR0L. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x55; /* FSR0H. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x66; /* TABLAT. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x00; /* TBLPTRU. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x88; /* TBLPTRUH. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x99; /* TBLPTRUL. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0xaa; /* PRODH. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0xbb; /* PRODL. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x00; /* PCLATU. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x00; /* PCLATH. */
-	pxTopOfStack++;
-
-	/* Next the .tmpdata and MATH_DATA sections. */
-	for( ucBlock = 0; ucBlock <= portCOMPILER_MANAGED_MEMORY_SIZE; ucBlock++ )
-	{
-		*pxTopOfStack = ( StackType_t ) ucBlock;
-		*pxTopOfStack++;
-	}
-
-	/* Store the top of the global data section. */
-	*pxTopOfStack = ( StackType_t ) portCOMPILER_MANAGED_MEMORY_SIZE; /* Low. */
-	pxTopOfStack++;
-
-	*pxTopOfStack = ( StackType_t ) 0x00; /* High. */
-	pxTopOfStack++;
+	
 
 	/* The only function return address so far is the address of the 
 	task. */
-	ulAddress = ( uint32_t ) pxCode;
-
-	/* TOS low. */
-	*pxTopOfStack = ( StackType_t ) ( ulAddress & ( uint32_t ) 0x00ff );
-	pxTopOfStack++;
+	ulAddress = (uint32_t) pxCode;
+	PORT_PUSH( (StackType_t) ( ulAddress & ( uint32_t ) 0x00ff ) ); /* TOS low. */
 	ulAddress >>= 8;
-
-	/* TOS high. */
-	*pxTopOfStack = ( StackType_t ) ( ulAddress & ( uint32_t ) 0x00ff );
-	pxTopOfStack++;
+	PORT_PUSH( (StackType_t) ( ulAddress & ( uint32_t ) 0x00ff ) ); /* TOS high. */
 	ulAddress >>= 8;
-
-	/* TOS even higher. */
-	*pxTopOfStack = ( StackType_t ) ( ulAddress & ( uint32_t ) 0x00ff );
-	pxTopOfStack++;
+	PORT_PUSH( (StackType_t) ( ulAddress & ( uint32_t ) 0x00ff ) );    /* TOS even higher. */
 
 	/* Store the number of return addresses on the hardware stack - so far only
 	the address of the task entry point. */
-	*pxTopOfStack = ( StackType_t ) 1;
-	pxTopOfStack++;
+	PORT_PUSH( 1 );
 
 	return pxTopOfStack;
-}
-/*-----------------------------------------------------------*/
-
-BaseType_t xPortStartScheduler( void )
-{
-	/* Setup a timer for the tick ISR is using the preemptive scheduler. */
-	prvSetupTimerInterrupt(); 
-
-	/* Restore the context of the first task to run. */
-	portRESTORE_CONTEXT();
-
-	/* Should not get here.  Use the function name to stop compiler warnings. */
-	( void ) prvLowInterrupt;
-	( void ) prvTickISR;
-
-	return pdTRUE;
 }
 /*-----------------------------------------------------------*/
 
@@ -472,90 +224,36 @@ void vPortEndScheduler( void )
 	once running.  If required disable the tick interrupt here, then return 
 	to xPortStartScheduler(). */
 }
-/*-----------------------------------------------------------*/
 
-/*
- * Manual context switch.  This is similar to the tick context switch,
- * but does not increment the tick count.  It must be identical to the
- * tick context switch in how it stores the stack of a task.
- */
-void vPortYield( void )
-{
-	/* This can get called with interrupts either enabled or disabled.  We
-	will save the INTCON register with the interrupt enable bits unmodified. */
-	portSAVE_CONTEXT( portINTERRUPTS_UNCHANGED );
-
-	/* Switch to the highest priority task that is ready to run. */
-	vTaskSwitchContext();
-
-	/* Start executing the task we have just switched to. */
-	portRESTORE_CONTEXT();
-}
-/*-----------------------------------------------------------*/
-
-/*
- * Vector for ISR.  Nothing here must alter any registers!
- */
-#pragma code high_vector=0x08
-static void prvLowInterrupt( void )
-{
-	/* Was the interrupt the tick? */
-	if( PIR4bits.CCP1IF )
-	{		
-		asm( "goto prvTickISR" );
-	}
-
-	/*
-	//Was the interrupt a byte being received?
-	if( PIR1bits.RCIF )
-	{
-		asm( "goto vSerialRxISR" );
-	}
-
-	//Was the interrupt the Tx register becoming empty?
-	if( PIR1bits.TXIF )
-	{
-		if( PIE1bits.TXIE )
-		{
-			asm( "goto vSerialTxISR" );
-		}
-	}
-	*/
-}
-#pragma code
-
-/*-----------------------------------------------------------*/
-
+#if 0
 /*
  * ISR for the tick.
  * This increments the tick count and, if using the preemptive scheduler, 
  * performs a context switch.  This must be identical to the manual 
  * context switch in how it stores the context of a task. 
  */
-static void prvTickISR( void )
+void __interrupt( irq( CCP1 ), base( 8 ), low_priority ) prvCCP1ISR( void )
 {
-	/* Interrupts must have been enabled for the ISR to fire, so we have to 
-	save the context with interrupts enabled. */
-	portSAVE_CONTEXT( portGLOBAL_INTERRUPT_FLAG );
-	PIR4bits.CCP1IF = 0;
-
-	/* Maintain the tick count. */
-	if( xTaskIncrementTick() != pdFALSE )
-	{
-		/* Switch to the highest priority task that is ready to run. */
-		vTaskSwitchContext();
-	}
-
-	portRESTORE_CONTEXT();
+    asm( "GLOBAL _prvTickISR" );
+    asm( "GOTO _prvTickISR" );
 }
+
+void __interrupt( irq( SWINT ), base( 8 ), high_priority ) prvSWINTISR( void )
+{
+    asm( "GLOBAL prvPortYieldISR" );
+    asm( "GOTO prvPortYieldISR" );
+}
+#endif
+
 /*-----------------------------------------------------------*/
 
 /*
  * Setup a timer for a regular tick.
  */
-static void prvSetupTimerInterrupt( void )
+//static
+void prvSetupTimerInterrupt( void )
 {
-	const uint32_t ulConstCompareValue = ( ( configCPU_CLOCK_HZ / portTIMER_FOSC_SCALE ) / configTICK_RATE_HZ );
+	const uint32_t ulConstCompareValue = 0xFFF7;//( ( configCPU_CLOCK_HZ / portTIMER_FOSC_SCALE ) / configTICK_RATE_HZ );
 	uint32_t ulCompareValue;
 	uint8_t ucByte;
 
@@ -573,8 +271,10 @@ static void prvSetupTimerInterrupt( void )
 	ulCompareValue >>= (uint32_t) 8;
 	CCPR1H = (uint8_t) ( ulCompareValue & (uint32_t) 0xff );	
 
-	CCP1CONbits.MODE = 0b1011;			/*< Pulse output, reset timer */
-	PIE4bits.CCP1IE = portBIT_SET;		/*< Interrupt enable. */
+	CCP1CON = 0x81;					// MODE Toggle_cleartmr; EN enabled; FMT right_aligned
+	CCPTMRS0bits.C1TSEL = 0x1;		// Selecting Timer 1
+	PIR4bits.CCP1IF = 0;			// Clear the CCP1 interrupt flag
+	PIE4bits.CCP1IE = portBIT_SET;	// Interrupt enable
 
 	/* We are only going to use the global interrupt bit, so set the peripheral	bit to true. */
 	INTCON0bits.GIEL = portBIT_SET;
@@ -586,6 +286,46 @@ static void prvSetupTimerInterrupt( void )
 
 	PIR4bits.TMR1IF = 0;	//Clearing IF flag.
 
-	T1CON = 0x03;	//CKPS 1:1; NOT_SYNC synchronize; TMR1ON enabled; T1RD16 enabled
+	T1CON = 0x33;   //CKPS 1:8; NOT_SYNC synchronize; TMR1ON enabled; T1RD16 enabled
 }
 
+/* configSUPPORT_STATIC_ALLOCATION is set to 1, so the application must provide an
+implementation of vApplicationGetIdleTaskMemory() to provide the memory that is
+used by the Idle task. */
+void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer,
+                                    StackType_t **ppxIdleTaskStackBuffer,
+                                    uint32_t *pulIdleTaskStackSize )
+{
+    /*  If the buffers to be provided to the Idle task are declared inside this
+    function then they must be declared static ? otherwise they will be allocated on
+    the stack and so not exists after this function exits. */
+    static StaticTask_t xIdleTaskTCB;
+    static StackType_t uxIdleTaskStack[ configMINIMAL_STACK_SIZE ];
+
+    /* Pass out a pointer to the StaticTask_t structure in which the Idle task?s
+    state will be stored. */
+    *ppxIdleTaskTCBBuffer = &xIdleTaskTCB;
+
+    /* Pass out the array that will be used as the Idle task?s stack. */
+    *ppxIdleTaskStackBuffer = uxIdleTaskStack;
+
+    /* Pass out the size of the array pointed to by *ppxIdleTaskStackBuffer.
+    Note that, as the array is necessarily of type StackType_t,
+    configMINIMAL_STACK_SIZE is specified in words, not bytes. */
+    *pulIdleTaskStackSize = configMINIMAL_STACK_SIZE;
+}
+
+#if 0
+//void __interrupt(irq(SWINT),base(168),high_priority) SWISR()
+void SWISR()
+{
+    asm( "GLOBAL prvPortInitISR" );
+    asm( "GOTO prvPortInitISR" );
+}
+
+void __interrupt(irq(CCP1),base(8),low_priority) CCP1ISR()
+{
+    asm( "GLOBAL prvPortISR" );
+    asm( "GOTO prvPortISR" );
+}
+#endif

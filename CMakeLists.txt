@@ -7,7 +7,7 @@ if( NOT CMAKE_BUILD_TYPE )
 	set( CMAKE_BUILD_TYPE Release )
 endif( )
 
-project( AquariumCAN C )
+project( AquariumCAN C ASM )
 set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wpedantic -fno-short-double -fno-short-float -memi=wordwrite -O0 -fasmfile -maddrqual=ignore -xassembler-with-cpp -mwarn=-3 -Wa,-a -DXPRJ_default=default -msummary=-psect,-class,+mem,-hex,-file -ginhx032 -Wl,--data-init -mno-keep-startup -mno-download -mdefault-config-bits -gdwarf-3 -mstack=compiled:auto:auto:auto" )
 #set( CMAKE_C_FLAGS_DEBUG "-g" )
 set( CMAKE_C_FLAGS_RELEASE "-O3" )

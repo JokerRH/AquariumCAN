@@ -28,6 +28,8 @@
 #ifndef PORTMACRO_H
 #define PORTMACRO_H
 
+#include <stdint.h>
+
 /*-----------------------------------------------------------
  * Port specific definitions.
  *
@@ -66,29 +68,29 @@ typedef unsigned char UBaseType_t;
 #define portSTACK_GROWTH			1
 #define portTICK_PERIOD_MS			( ( TickType_t ) 1000 / configTICK_RATE_HZ )
 /*-----------------------------------------------------------*/
-
+    
 /* Critical section management. */
-#define portDISABLE_INTERRUPTS()	INTCON0bits.GIEH = 0;
+#define portDISABLE_INTERRUPTS()    INTCON0bits.GIEH = 0;
 #define portENABLE_INTERRUPTS()		INTCON0bits.GIEH = 1;
 
 /* Push the INTCON register onto the stack, then disable interrupts. */
-#define portENTER_CRITICAL()		POSTINC1 = INTCON0;				\
-									INTCON0bits.GIEH = 0;
+extern uint8_t ucCriticalCount;
+#define portENTER_CRITICAL()		portDISABLE_INTERRUPTS( ); \
+                                    ucCriticalCount++;
 
 /* Retrieve the INTCON register from the stack, and enable interrupts
 if they were saved as being enabled.  Don't modify any other bits
-within the INTCON register as these may have lagitimately have been
+within the INTCON register as these may have legitimately have been
 modified within the critical region. */
-#define portEXIT_CRITICAL()			asm( "MOVF	POSTDEC1, 1, 0" );			\
-									if( INDF1 & portGLOBAL_INT_ENABLE_BIT )	\
-									{										\
-										portENABLE_INTERRUPTS();			\
-									}
+#define portEXIT_CRITICAL( )		ucCriticalCount--;          \
+                                    if( !ucCriticalCount )      \
+										portENABLE_INTERRUPTS( );
+
 /*-----------------------------------------------------------*/
 
 /* Task utilities. */
-extern void vPortYield( void );
-#define portYIELD()				vPortYield()
+#define portYIELD( )	PIR0bits.SWIF = 1;
+
 /*-----------------------------------------------------------*/
 
 /* Task function macros as described on the FreeRTOS.org WEB site. */

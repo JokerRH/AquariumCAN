@@ -22,6 +22,7 @@ target_sources( FreeRTOS
 		FreeRTOS/include/timers.h
 	PRIVATE
 		port.c
+		#portasm.s
 		FreeRTOS/croutine.c
 		FreeRTOS/event_groups.c
 		FreeRTOS/list.c
