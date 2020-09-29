@@ -225,26 +225,6 @@ void vPortEndScheduler( void )
 	to xPortStartScheduler(). */
 }
 
-#if 0
-/*
- * ISR for the tick.
- * This increments the tick count and, if using the preemptive scheduler, 
- * performs a context switch.  This must be identical to the manual 
- * context switch in how it stores the context of a task. 
- */
-void __interrupt( irq( CCP1 ), base( 8 ), low_priority ) prvCCP1ISR( void )
-{
-    asm( "GLOBAL _prvTickISR" );
-    asm( "GOTO _prvTickISR" );
-}
-
-void __interrupt( irq( SWINT ), base( 8 ), high_priority ) prvSWINTISR( void )
-{
-    asm( "GLOBAL prvPortYieldISR" );
-    asm( "GOTO prvPortYieldISR" );
-}
-#endif
-
 /*-----------------------------------------------------------*/
 
 /*
@@ -314,18 +294,3 @@ void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer,
     configMINIMAL_STACK_SIZE is specified in words, not bytes. */
     *pulIdleTaskStackSize = configMINIMAL_STACK_SIZE;
 }
-
-#if 0
-//void __interrupt(irq(SWINT),base(168),high_priority) SWISR()
-void SWISR()
-{
-    asm( "GLOBAL prvPortInitISR" );
-    asm( "GOTO prvPortInitISR" );
-}
-
-void __interrupt(irq(CCP1),base(8),low_priority) CCP1ISR()
-{
-    asm( "GLOBAL prvPortISR" );
-    asm( "GOTO prvPortISR" );
-}
-#endif
