@@ -64,32 +64,34 @@ typedef unsigned char UBaseType_t;
 
 /* Hardware specifics. */
 #define portBYTE_ALIGNMENT			1
-#define portGLOBAL_INT_ENABLE_BIT	0x80
+#define portGLOBAL_INT_ENABLE_BIT	_INTCON0_GIEH_MASK
 #define portSTACK_GROWTH			1
 #define portTICK_PERIOD_MS			( ( TickType_t ) 1000 / configTICK_RATE_HZ )
 /*-----------------------------------------------------------*/
     
 /* Critical section management. */
-#define portDISABLE_INTERRUPTS()    INTCON0bits.GIEH = 0;
-#define portENABLE_INTERRUPTS()		INTCON0bits.GIEH = 1;
+#define portDISABLE_INTERRUPTS()    INTCON0bits.GIEH = 0
+#define portENABLE_INTERRUPTS()		INTCON0bits.GIEH = 1
 
 /* Push the INTCON register onto the stack, then disable interrupts. */
 extern uint8_t ucCriticalCount;
-#define portENTER_CRITICAL()		portDISABLE_INTERRUPTS( ); \
-                                    ucCriticalCount++;
+#define portENTER_CRITICAL()		PREINC1 = INTCON0;\
+                                    portDISABLE_INTERRUPTS( )
 
 /* Retrieve the INTCON register from the stack, and enable interrupts
 if they were saved as being enabled.  Don't modify any other bits
 within the INTCON register as these may have legitimately have been
 modified within the critical region. */
-#define portEXIT_CRITICAL( )		ucCriticalCount--;          \
-                                    if( !ucCriticalCount )      \
-										portENABLE_INTERRUPTS( );
+#define portEXIT_CRITICAL( )	if( POSTDEC1 & portGLOBAL_INT_ENABLE_BIT )\
+                                    portENABLE_INTERRUPTS( )
 
 /*-----------------------------------------------------------*/
 
 /* Task utilities. */
-#define portYIELD( )	PIR0bits.SWIF = 1;
+#define portYIELD( )	PREINC1 = INTCON0;\
+                        portDISABLE_INTERRUPTS( );\
+                        PIR0bits.SWIF = 1;\
+                        portENABLE_INTERRUPTS( )
 
 /*-----------------------------------------------------------*/
 

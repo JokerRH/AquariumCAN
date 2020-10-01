@@ -7,7 +7,7 @@
 #include "task.h"
 
 asm( "GLOBAL _TaskBlinkRedLED" );
-void TaskBlinkRedLED( void* pvParameters )
+__reentrant void TaskBlinkRedLED( void* pvParameters )
 {
 	LATAbits.LATA4 = 1;
 	IO_RA4_SetHigh( );
@@ -19,7 +19,7 @@ void TaskBlinkRedLED( void* pvParameters )
 }
 
 asm( "GLOBAL _TaskBlinkGreenLED" );
-void TaskBlinkGreenLED( void* pvParameters )
+__reentrant void TaskBlinkGreenLED( void* pvParameters )
 {
 	LATAbits.LATA5 = 1;
 	IO_RA5_SetHigh( );

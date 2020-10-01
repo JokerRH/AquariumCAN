@@ -73,20 +73,13 @@ asm("GLOBAL _prvIdleTask");
 
 /* Initial interrupt enable state for newly created tasks.  This value is
 copied into INTCON when a task switches in for the first time. */
-#define portINITAL_INTERRUPT_STATE			0xC0
-
-/* Just the bit within INTCON for the global interrupt flag. */
-#define portGLOBAL_INTERRUPT_FLAG			0x80
-
-/* Constant used for context switch macro when we require the interrupt 
-enable state to be unchanged when the interrupted task is switched back in. */
-#define portINTERRUPTS_UNCHANGED			0x00
+#define portINITAL_INTERRUPT_STATE			( _INTCON0_GIEH_MASK | _INTCON0_GIEL_MASK | _INTCON0_IPEN_MASK )
 
 /* Some memory areas get saved as part of the task context.  These memory
 area's get used by the compiler for temporary storage, especially when 
 performing mathematical operations, or when using 32bit data types.  This
 constant defines the size of memory area which must be saved. */
-#define portCOMPILER_MANAGED_MEMORY_SIZE	( ( uint8_t ) 0x13 )
+//#define portCOMPILER_MANAGED_MEMORY_SIZE	( ( uint8_t ) 0x13 )
 
 /* We require the address of the pxCurrentTCB variable, but don't want to know
 any details of its type. */
@@ -181,6 +174,7 @@ StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t px
 	PORT_PUSH( 0x44 );
 
 	/* Next are all the registers that form part of the task context. */
+    PORT_PUSH( portINITAL_INTERRUPT_STATE );    //INTCON0
     PORT_PUSH( 0xcc );                          //STATUS
     PORT_PUSH( 0x66 );                          //WREG
 	PORT_PUSH( 0x11 );                          //BSR
@@ -188,8 +182,6 @@ StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t px
     PORT_PUSH( 0x00 );                          //PCLATU
     PORT_PUSH( 0x44 );                          //FSR0L
 	PORT_PUSH( 0x55 );                          //FSR0H
-    PORT_PUSH( 0x44 );                          //FSR1L
-	PORT_PUSH( 0x55 );                          //FSR1H
 	PORT_PUSH( 0x22 );                          //FSR2L
 	PORT_PUSH( 0x33 );                          //FSR2H
     PORT_PUSH( 0xbb );                          //PRODL
@@ -198,8 +190,9 @@ StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t px
     PORT_PUSH( 0x99 ); //TBLPTRUL
     PORT_PUSH( 0x88 ); //TBLPTRUH
 	PORT_PUSH( 0x00 ); //TBLPTRU
-	
-	
+    PORT_PUSH( 0x11 ); //STATUS_CSHAD
+    PORT_PUSH( 0x22 ); //WREG_CSHAD
+    PORT_PUSH( 0x33 ); //BSR_CSHAD
 
 	/* The only function return address so far is the address of the 
 	task. */
