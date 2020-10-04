@@ -14,7 +14,8 @@ void INTERRUPT_Initialize( )
 
 	IVTBASEU = 0;
 	IVTBASEH = 0;
-    IVTBASEL = 0xA8;
+    //IVTBASEL = 0xA8;
+    IVTBASEL = 8;
 
 	IVTLOCK = 0x55;
 	IVTLOCK = 0xAA;
@@ -22,7 +23,7 @@ void INTERRUPT_Initialize( )
 
 	GIE = state;
 	// Assign peripheral interrupt priority vectors
-	IPR4bits.CCP1IP = 0;
+	//IPR4bits.CCP1IP = 0;
 }
 
 #if 1

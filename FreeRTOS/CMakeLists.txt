@@ -30,7 +30,7 @@ target_sources( FreeRTOS
 		#FreeRTOS/stream_buffer.c
 		FreeRTOS/tasks.c
 		FreeRTOS/timers.c
-		FreeRTOS/portable/MemMang/heap_4.c
+		#FreeRTOS/portable/MemMang/heap_4.c
 )
 
 target_include_directories( FreeRTOS

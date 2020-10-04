@@ -11,6 +11,7 @@ project( AquariumCAN C ASM )
 set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wpedantic -fno-short-double -fno-short-float -memi=wordwrite -O0 -fasmfile -maddrqual=ignore -xassembler-with-cpp -mwarn=-3 -Wa,-a -DXPRJ_default=default -msummary=-psect,-class,+mem,-hex,-file -ginhx032 -Wl,--data-init -mno-keep-startup -mno-download -mdefault-config-bits -gdwarf-3 -mstack=compiled:auto:auto:auto" )
 #set( CMAKE_C_FLAGS_DEBUG "-g" )
 set( CMAKE_C_FLAGS_RELEASE "-O3" )
+add_link_options( -DXPRJ_default=default -fno-short-double -fno-short-float -memi=wordwrite -O0 -fasmfile -maddrqual=ignore -mwarn=-3 -Wa,-a -msummary=-psect,-class,+mem,-hex,-file  -ginhx032 -Wl,--data-init -mno-keep-startup -mno-download -mdefault-config-bits -std=c99 -gdwarf-3 -mstack=compiled:auto:auto:auto )
 
 #add_definitions( __XC8 __PICC18__ _18F25K83 )
 

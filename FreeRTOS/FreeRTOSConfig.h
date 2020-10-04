@@ -12,9 +12,9 @@
 #define configMAX_TASK_NAME_LEN                 16
 #define configUSE_16_BIT_TICKS                  1
 #define configIDLE_SHOULD_YIELD                 1
-#define configUSE_TASK_NOTIFICATIONS            0
-#define configTASK_NOTIFICATION_ARRAY_ENTRIES   3
-#define configUSE_MUTEXES                       0
+#define configUSE_TASK_NOTIFICATIONS            1
+#define configTASK_NOTIFICATION_ARRAY_ENTRIES   1
+#define configUSE_MUTEXES                       1
 #define configUSE_RECURSIVE_MUTEXES             0
 #define configUSE_COUNTING_SEMAPHORES           0
 #define configQUEUE_REGISTRY_SIZE               10
@@ -29,7 +29,7 @@
 /* Memory allocation related definitions. */
 #define configSUPPORT_STATIC_ALLOCATION         1
 #define configSUPPORT_DYNAMIC_ALLOCATION        0
-#define configTOTAL_HEAP_SIZE                   1024
+#define configTOTAL_HEAP_SIZE                   0
 #define configAPPLICATION_ALLOCATED_HEAP        1
 
 /* Hook function related definitions. */
@@ -70,10 +70,10 @@
 #define configENFORCE_SYSTEM_CALLS_FROM_KERNEL_ONLY            1
 
 /* Optional functions - most linkers will remove unused functions anyway. */
-#define INCLUDE_vTaskPrioritySet                0
-#define INCLUDE_uxTaskPriorityGet               0
+#define INCLUDE_vTaskPrioritySet                1
+#define INCLUDE_uxTaskPriorityGet               1
 #define INCLUDE_vTaskDelete                     0
-#define INCLUDE_vTaskSuspend                    0
+#define INCLUDE_vTaskSuspend                    1
 #define INCLUDE_xResumeFromISR                  0
 #define INCLUDE_vTaskDelayUntil                 0
 #define INCLUDE_vTaskDelay                      1
@@ -86,6 +86,6 @@
 #define INCLUDE_xTimerPendFunctionCall          0
 #define INCLUDE_xTaskAbortDelay                 0
 #define INCLUDE_xTaskGetHandle                  0
-#define INCLUDE_xTaskResumeFromISR              0
+#define INCLUDE_xTaskResumeFromISR              1
 
 /* A header file that defines trace macro can be included here. */
