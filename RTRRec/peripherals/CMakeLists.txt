@@ -4,6 +4,7 @@ target_sources( RTRRec
 		device_config.h
 		ecan.c
 		ecan.h
+		ecans.S
 		interrupt_manager.c
 		interrupt_manager.h
 		oscillator.c

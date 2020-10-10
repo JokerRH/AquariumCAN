@@ -89,9 +89,12 @@ modified within the critical region. */
 
 /* Task utilities. */
 #define portYIELD( )	PREINC1 = INTCON0;\
-                        portDISABLE_INTERRUPTS( );\
-                        PIR0bits.SWIF = 1;\
-                        portENABLE_INTERRUPTS( )
+						portDISABLE_INTERRUPTS( );\
+						PIR0bits.SWIF = 1;\
+						portENABLE_INTERRUPTS( )
+
+#define portYIELD_FROM_ISR( x )	if( x )\
+									PIR0bits.SWIF = 1
 
 /*-----------------------------------------------------------*/
 

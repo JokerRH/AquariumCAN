@@ -55,6 +55,8 @@ Changes from V3.2.0
 */
 
 /* Scheduler include files. */
+#include <pic18f25k83.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -260,6 +262,8 @@ void prvSetupTimerInterrupt( void )
 	PIR4bits.TMR1IF = 0;	//Clearing IF flag.
 
 	T1CON = 0x33;   //CKPS 1:8; NOT_SYNC synchronize; TMR1ON enabled; T1RD16 enabled
+    
+    PIE0bits.SWIE = 1;
 }
 
 /* configSUPPORT_STATIC_ALLOCATION is set to 1, so the application must provide an

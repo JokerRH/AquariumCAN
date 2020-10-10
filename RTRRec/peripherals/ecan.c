@@ -8,13 +8,18 @@
 #include "FreeRTOS/include/semphr.h"
 #include "FreeRTOS/include/list.h"
 
+#include "pin_manager.h"
+
 #define ECAN_QUEUE_LEN	3
 #define ECAN_QUEUE_ITEM	1
 
 //Transmit variables
-TaskHandle_t xECANMsgHandle;
+TaskHandle_t xHandleECANTransmit;
+StackType_t xStackECANTransmit[ configMINIMAL_STACK_SIZE ];
+StaticTask_t xBufferECANTransmit;
 static volatile UBaseType_t uxTopReadyPriority;
-ecan_msg_t *pxCurrentMsg;
+ListItem_t *pxECANCurrentLI;
+ecan_msg_t *pxECANCurrentMsg;
 
 static SemaphoreHandle_t xMutexMsg;
 static StaticSemaphore_t xMutexMsgBuffer;
@@ -25,10 +30,6 @@ PRIVILEGED_DATA static List_t xDelayedMessageList2;					/*< Delayed messages (tw
 PRIVILEGED_DATA static List_t *volatile pxDelayedTaskList;			/*< Points to the delayed message list currently being used. */
 PRIVILEGED_DATA static List_t *volatile pxOverflowDelayedTaskList;	/*< Points to the delayed message list currently being used to hold messages that have overflowed the current tick count. */
 
-static QueueHandle_t xQueueTX;
-static StaticQueue_t xQueueTXBuffer;
-static uint8_t ucQueueTXDataBuffer[ ECAN_QUEUE_LEN * ECAN_QUEUE_ITEM ];
-
 //Receive variables
 TaskHandle_t xECANRecHandle;
 
@@ -37,14 +38,14 @@ static StaticSemaphore_t xMutexRecBuffer;
 
 static List_t pxReceiveList;
 
-__reentrant void vTaskECANTransmit( void *pvParameters )
+asm( "GLOBAL _vECANTransmitTask" );
+__reentrant void vECANTransmitTask( void *pvParameters )
 {
-	UBaseType_t uxTopPriority;
-
-	//Suspend until messages are available (mutex is released while being suspended)
-	xSemaphoreTake( xMutexMsg, portMAX_DELAY );
-	goto MSG_SUSPEND;
-
+	//Set to max priority and check.
+	//If a different task has queued a message before this one was allowed to initialize uxTopReadyPriority is overridden to max and a few empty lists might be checked unnecessarily.
+	//If a different task queues a message after initialization of uxTopPriority and before the mutex lock the task works normally.
+	static UBaseType_t uxTopPriority;	//Only a single instance of this function can ever exist, no need to write this on the stack.
+	uxTopReadyPriority = configMAX_PRIORITIES - 1;
 	while( 1 )
 	{
 		// Select a new message to transmit
@@ -62,7 +63,6 @@ __reentrant void vTaskECANTransmit( void *pvParameters )
 
 			//No message was in the ready lists, suspend until a new message is inserted.
 			//Use a critical region to ensure that no task tried to resume this one between releasing the mutex and suspension.
-MSG_SUSPEND:
 			taskENTER_CRITICAL( );
 			xSemaphoreGive( xMutexMsg );
 			vTaskSuspend( NULL );
@@ -84,22 +84,20 @@ MSG_SUSPEND:
 			vTaskPrioritySet( NULL, uxTopReadyPriority );	//May call taskYIELD. vTaskSwitchContext should only set xYieldPending and return.
 		}
 
-		//Fetch the current message, then release the mutex
-		ListItem_t *pxCurrentLI = listGET_HEAD_ENTRY( &( pxReadyMessagesLists[ uxTopReadyPriority ] ) );
+		//Fetch the current list item, then release the mutex
+		pxECANCurrentLI = listGET_HEAD_ENTRY( &( pxReadyMessagesLists[ uxTopReadyPriority ] ) );
+		uxListRemove( pxECANCurrentLI );
 		xSemaphoreGive( xMutexMsg );
 
-		pxCurrentMsg = listGET_LIST_ITEM_OWNER( pxCurrentLI );
+		pxECANCurrentMsg = listGET_LIST_ITEM_OWNER( pxECANCurrentLI );
 
 		//Request transmition and wait
-		//Critical region ensures that the transmit ISR only runs after this task is already suspended.
-		//Without this the ISR's resume call will not wake this task.
-		taskENTER_CRITICAL( );
 		PIE5bits.TXBnIE = 1;
-		vTaskSuspend( NULL );
-		taskEXIT_CRITICAL( );
+		ulTaskNotifyTake( true, portMAX_DELAY );
 
-		//Message has been flagged for transmission, execute callback
-		pxCurrentMsg->pvCallback( pxCurrentLI );
+		//Message has been loaded into a transmission buffer, execute callback.
+		//pxCurrentMsg is now free.
+		pxECANCurrentMsg->pvCallback( );
 	}
 }
 
@@ -131,20 +129,20 @@ void vECANTransmit( ListItem_t *pMsg )
 	vListInsert( &( pxReadyMessagesLists[ uxPriority ] ), pMsg );
 	if( uxTopReadyPriority < uxPriority )
 	{
-		vTaskPrioritySet( xECANMsgHandle, uxPriority );
+		vTaskPrioritySet( xHandleECANTransmit, uxPriority );
 		uxTopReadyPriority = uxPriority;
 	}
 	xSemaphoreGive( xMutexMsg );
 
 	//Resume the message task
-	vTaskResume( xECANMsgHandle );
+	vTaskResume( xHandleECANTransmit );
 }
 
 #if 0
 #include "pin_manager.h"
-void __interrupt( irq( TXB2IF ), base( 8 ), high_priority ) prvECANTxISR( void )
+void __interrupt( irq( TXB2IF ), base( 8 ), low_priority ) prvECANTxISR( void )
 {
-    IO_RA4_SetHigh( );
+	IO_RA4_SetHigh( );
 	IO_RA5_SetHigh( );
 	asm( "\
 		MOVF	CANSTAT, w, a	    ; Create backup of CANSTAT\
@@ -175,7 +173,9 @@ void __interrupt( irq( TXB2IF ), base( 8 ), high_priority ) prvECANTxISR( void )
 		BCF	    PIE5, \
 	" );
 
-	xTaskResumeFromISR( xECANMsgHandle );
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	vTaskNotifyGiveFromISR( xECANMsgHandle, &xHigherPriorityTaskWoken );
+	portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 }
 #endif
 
@@ -200,9 +200,6 @@ void ECAN_Initialize( void )
 
 	for( UBaseType_t uxPriority = (UBaseType_t) 0U; uxPriority < (UBaseType_t) configMAX_PRIORITIES; uxPriority++ )
 		vListInitialise( &( pxReadyMessagesLists[ uxPriority ] ) );
-
-	xQueueTX = xQueueCreateStatic( ECAN_QUEUE_LEN, ECAN_QUEUE_ITEM, ucQueueTXDataBuffer, &xQueueTXBuffer );
-	configASSERT( xQueueTX );
 
 	CANCON = 0x80;
 	while( 0x80 != ( CANSTAT & 0xE0 ) ); //Wait until ECAN is in config mode
@@ -328,7 +325,7 @@ void ECAN_Initialize( void )
 	Initialize CAN Timings
 	*/
 	
-   /**
+	/**
 	Baud rate: 500kbps
 	System frequency: 16000000
 	ECAN clock frequency: 16000000
@@ -345,12 +342,15 @@ void ECAN_Initialize( void )
 	CANCON = 0x00;
 	while (0x00 != (CANSTAT & 0xE0)); // wait until ECAN is in Normal mode
 
+	//Create transmit task
+	xHandleECANTransmit = xTaskCreateStatic( vECANTransmitTask, (const portCHAR*) "ECANTX", configMINIMAL_STACK_SIZE, NULL, 0, xStackECANTransmit, &xBufferECANTransmit );
+
 	//Enable interrupts
-    TXBIEbits.TXB0IE = 1;
-    TXBIEbits.TXB1IE = 1;
-    TXBIEbits.TXB2IE = 1;
-    
-    TXB0CONbits.TXBIF = 1;
-    //TXB1CONbits.TXBIF = 1;
-    //TXB2CONbits.TXBIF = 1;
+	TXBIEbits.TXB0IE = 1;
+	TXBIEbits.TXB1IE = 1;
+	TXBIEbits.TXB2IE = 1;
+
+	TXB0CONbits.TXBIF = 1;
+	//TXB1CONbits.TXBIF = 1;
+	//TXB2CONbits.TXBIF = 1;
 }
