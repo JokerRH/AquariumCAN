@@ -25,6 +25,7 @@ void INTERRUPT_Initialize( )
 	IPR0bits.SWIP = 0;
 	IPR4bits.CCP1IP = 0;
 	IPR5bits.TXB2IP = 0;
+	IPR5bits.RXBnIP = 0;
 }
 
 void __interrupt(irq(default),base(8)) Default_ISR()

@@ -7,11 +7,12 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-TaskHandle_t xHandleTxTest;
-StackType_t xStackTxTest[ configMINIMAL_STACK_SIZE ];
-StaticTask_t xBufferTxTest;
+TaskHandle_t xHandleTest;
+StackType_t xStackTest[ configMINIMAL_STACK_SIZE ];
+StaticTask_t xBufferTest;
 
-static __reentrant void convertCANid2Reg(uint32_t tempPassedInID, uint8_t canIdType, uint8_t *passedInEIDH, uint8_t *passedInEIDL, uint8_t *passedInSIDH, uint8_t *passedInSIDL)
+#if 0
+static __reentrant void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *passedInEIDH, uint8_t *passedInEIDL, uint8_t *passedInSIDH, uint8_t *passedInSIDL )
 {
 	*passedInEIDH = 0;
 	*passedInEIDL = 0;
@@ -24,19 +25,22 @@ static __reentrant void convertCANid2Reg(uint32_t tempPassedInID, uint8_t canIdT
 asm( "GLOBAL _TxCallback" );
 void TxCallback( void )
 {
-	xTaskNotifyGive( xHandleTxTest );
+	xTaskNotifyGive( xHandleTest );
 }
 
-ListItem_t li;
-ecan_msg_t msg;
 asm( "GLOBAL _TaskTxTest" );
 __reentrant void TaskTxTest( void* pvParameters )
 {
-	uint8_t ucCount = 3;
+	static uint8_t ucCount;
+	static ListItem_t li;
+	static ecan_msg_t msg;
+
+	ucCount = 3;
 
 	msg.pvCallback = TxCallback;
+	vListInitialiseItem( &li );
 	listSET_LIST_ITEM_OWNER( &li, &msg );
-	convertCANid2Reg( 0x124, 1, &msg.ucEIDH, &msg.ucEIDL, &msg.ucSIDH, &msg.ucSIDL );
+	convertCANid2Reg( 0x124, &msg.ucEIDH, &msg.ucEIDL, &msg.ucSIDH, &msg.ucSIDL );
 	msg.ucDLC = 1;
 
 	while( 1 )
@@ -60,23 +64,37 @@ __reentrant void TaskTxTest( void* pvParameters )
 			ucCount = 4;
 		ucCount--;
 
-		vTaskDelay( 2 );
+		vTaskDelay( 20 );
 	}
 }
+#endif
 
-asm( "GLOBAL _TaskBlinkGreenLED" );
-__reentrant void TaskBlinkGreenLED( void* pvParameters )
+#if 1
+asm( "GLOBAL _RxCallback" );
+bool RxCallback( void )
 {
-	LATAbits.LATA5 = 1;
-	IO_RA5_SetHigh( );
+	xTaskNotify( xHandleTest, RXB0D0, eSetValueWithOverwrite );
+	return true;
+}
+
+asm( "GLOBAL _TaskRxTest" );
+__reentrant void TaskRxTest( void* pvParameters )
+{
+	static uint8_t ucCount;
+	static ListItem_t li;
+	vListInitialiseItem( &li );
+	listSET_LIST_ITEM_OWNER( &li, RxCallback );
+	vECANReceive( &li );
 	while( 1 )
 	{
-		IO_RA5_Toggle( );
-		vTaskDelay( 1 );
+		ucCount = ulTaskNotifyTake( true, portMAX_DELAY );
+		LATAbits.LATA4 = ucCount & 1;
+		LATAbits.LATA5 = ( ucCount >> 1 ) & 1;
 	}
 }
+#endif
 
-void main( )
+void __nonreentrant main( )
 {
 	uint8_t bReason = 0;
 	if( PCON0bits.STKUNF )
@@ -128,7 +146,8 @@ void main( )
 	INTCON0bits.GIEL = 1;
 	INTCON0bits.GIEH = 1;
 
-	xHandleTxTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", configMINIMAL_STACK_SIZE, NULL, 3, xStackTxTest, &xBufferTxTest );
+	//xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", configMINIMAL_STACK_SIZE, NULL, 3, xStackTest, &xBufferTest );
+	xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", configMINIMAL_STACK_SIZE, NULL, 3, xStackTest, &xBufferTest );
 	vTaskStartScheduler( );
 	while( 1 );
 }

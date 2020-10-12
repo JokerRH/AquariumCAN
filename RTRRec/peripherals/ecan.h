@@ -7,7 +7,7 @@
 
 #define ecanNOTIFICATION_IDX	0
 
-typedef void( *txcallback_t )( void );	//Use pxECANCurrentLI and pxECANCurrentMsg to access the corresponding list item/message
+typedef void( *txcallback_t )( void );	//Use pxECANCurrentTxLI and pxECANCurrentMsg to access the corresponding list item/message
 typedef struct
 {
 	uint8_t ucD7;
@@ -26,10 +26,12 @@ typedef struct
 	txcallback_t pvCallback;
 } ecan_msg_t;
 
-typedef bool( *rxcallback_t )( ListItem_t *pxLI );
+typedef bool( *rxcallback_t )( void );
 
-extern ListItem_t *pxECANCurrentLI;
+extern ListItem_t *pxECANCurrentTxLI;
 extern ecan_msg_t *pxECANCurrentMsg;
+extern ListItem_t *pxECANCurrentRxLI;
 
 void ECAN_Initialize( void );
 void vECANTransmit( ListItem_t *pMsg );
+void vECANReceive( ListItem_t *pMsg );
