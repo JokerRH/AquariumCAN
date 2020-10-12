@@ -1,4 +1,5 @@
 #include <xc.inc>
+#include <FreeRTOSConfig.h>
 
 GLOBAL _prvSetupTimerInterrupt
 SIGNAT _prvSetupTimerInterrupt, 89
@@ -61,6 +62,7 @@ PSECT mytext2,local,class=CODE,reloc=4
 ;
 ; prvPortISR
 ;
+GLOBAL btemp
 GLOBAL prvPortISR_SWINT
 GLOBAL prvPortISR_CCP1
 prvPortISR_SWINT:
@@ -92,6 +94,12 @@ SAVE_CTX:
 	MOVFF	WREG_CSHAD, PREINC1
 	MOVFF	BSR_CSHAD, PREINC1
 
+	; Save temp registers
+	LFSR	2, btemp
+	REPT	configTEMP_SIZE
+		MOVFF	POSTINC2, PREINC1
+	ENDM
+
 	; Store the hardware stack pointer in a temp register before we modify it
 	MOVFF	STKPTR, FSR2L
 
@@ -101,7 +109,7 @@ SAVE_CTX:
 LOOP_SAVE:
 		MOVFF	TOSL, PREINC1
 		MOVFF	TOSH, PREINC1
-		MOVFF	TOSU, PREINC1
+		;MOVFF	TOSU, PREINC1
 		POP
 		TSTFSZ	STKPTR, a	;do ... while( STKPTR != 0 )
 		GOTO LOOP_SAVE
@@ -150,11 +158,17 @@ prvPortRestoreContext:
 LOOP_RESTORE:
 		;Push PC onto the stack, then override it with the software stack address
 		PUSH
-		MOVFF	POSTDEC1, TOSU
+		;MOVFF	POSTDEC1, TOSU
 		MOVFF	POSTDEC1, TOSH
 		MOVFF	POSTDEC1, TOSL
 		DECFSZ	WREG, a
 		GOTO LOOP_RESTORE
+
+	; Restore temp registers
+	LFSR	2, btemp + configTEMP_SIZE - 1
+	REPT	configTEMP_SIZE
+		MOVFF	POSTDEC1, POSTDEC2
+	ENDM
 
 	; Restore the context
 	MOVFF	POSTDEC1, BSR_CSHAD

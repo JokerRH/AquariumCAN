@@ -12,7 +12,7 @@
 
 //Transmit variables
 TaskHandle_t xECANTransmitHandle;
-static StackType_t xECANTransmitStack[ configMINIMAL_STACK_SIZE ];
+static StackType_t xECANTransmitStack[ configMINIMAL_STACK_SIZE + 16 ];
 static StaticTask_t xECANTransmitBuffer;
 static volatile UBaseType_t uxTopReadyPriority;
 ListItem_t *pxECANCurrentTxLI;
@@ -29,7 +29,7 @@ PRIVILEGED_DATA static List_t *volatile pxOverflowDelayedTaskList;	/*< Points to
 
 //Receive variables
 static TaskHandle_t xECANReceiveHandle;
-static StackType_t xECANReceiveStack[ configMINIMAL_STACK_SIZE ];
+static StackType_t xECANReceiveStack[ configMINIMAL_STACK_SIZE + 16 ];
 static StaticTask_t xECANReceiveBuffer;
 ListItem_t *pxECANCurrentRxLI;
 
@@ -314,13 +314,13 @@ void ECAN_Initialize( void )
 	for( UBaseType_t uxPriority = (UBaseType_t) 0U; uxPriority < (UBaseType_t) configMAX_PRIORITIES; uxPriority++ )
 		vListInitialise( &( pxReadyMessagesLists[ uxPriority ] ) );
 
-	xECANTransmitHandle = xTaskCreateStatic( prvECANTransmitTask, (const portCHAR*) "ECANTX", configMINIMAL_STACK_SIZE, NULL, 0, xECANTransmitStack, &xECANTransmitBuffer );
+	xECANTransmitHandle = xTaskCreateStatic( prvECANTransmitTask, (const portCHAR*) "ECANTX", configMINIMAL_STACK_SIZE + 16, NULL, 0, xECANTransmitStack, &xECANTransmitBuffer );
 	
 	//Initialise receiver
 	xReceiveMutexHandle = xSemaphoreCreateMutexStatic( &xReceiveMutexBuffer );
 	configASSERT( xReceiveMutexHandle );
 	vListInitialise( &xReceiveList );
-	xECANReceiveHandle = xTaskCreateStatic( prvECANReceiveTask, (const portCHAR*) "ECANRX", configMINIMAL_STACK_SIZE, NULL, 0, xECANReceiveStack, &xECANReceiveBuffer );
+	xECANReceiveHandle = xTaskCreateStatic( prvECANReceiveTask, (const portCHAR*) "ECANRX", configMINIMAL_STACK_SIZE + 16, NULL, 0, xECANReceiveStack, &xECANReceiveBuffer );
 
 	//Enable interrupts
 	TXBIEbits.TXB0IE = 1;

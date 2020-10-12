@@ -8,10 +8,10 @@
 #include "task.h"
 
 TaskHandle_t xHandleTest;
-StackType_t xStackTest[ configMINIMAL_STACK_SIZE ];
+StackType_t xStackTest[ configMINIMAL_STACK_SIZE + 16 ];
 StaticTask_t xBufferTest;
 
-#if 0
+#if 1
 static __reentrant void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *passedInEIDH, uint8_t *passedInEIDL, uint8_t *passedInSIDH, uint8_t *passedInSIDL )
 {
 	*passedInEIDH = 0;
@@ -69,7 +69,7 @@ __reentrant void TaskTxTest( void* pvParameters )
 }
 #endif
 
-#if 1
+#if 0
 asm( "GLOBAL _RxCallback" );
 bool RxCallback( void )
 {
@@ -146,8 +146,8 @@ void __nonreentrant main( )
 	INTCON0bits.GIEL = 1;
 	INTCON0bits.GIEH = 1;
 
-	//xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", configMINIMAL_STACK_SIZE, NULL, 3, xStackTest, &xBufferTest );
-	xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", configMINIMAL_STACK_SIZE, NULL, 3, xStackTest, &xBufferTest );
+	xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", configMINIMAL_STACK_SIZE + 16, NULL, 3, xStackTest, &xBufferTest );
+	//xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", configMINIMAL_STACK_SIZE + 16, NULL, 3, xStackTest, &xBufferTest );
 	vTaskStartScheduler( );
 	while( 1 );
 }

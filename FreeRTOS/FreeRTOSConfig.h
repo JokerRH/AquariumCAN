@@ -1,5 +1,6 @@
 #pragma once
-#include <xc.h>
+
+#define configTEMP_SIZE							32
 
 #define configUSE_PREEMPTION                    1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 0
@@ -8,7 +9,7 @@
 #define configSYSTICK_CLOCK_HZ                  1
 #define configTICK_RATE_HZ                      1
 #define configMAX_PRIORITIES                    4
-#define configMINIMAL_STACK_SIZE                128
+#define configMINIMAL_STACK_SIZE                ( 24 + configTEMP_SIZE )	//Absolut minimal stack size just to call the function. Each hardware stack entry (i.e. nested function call) requires an additional 2 bytes!
 #define configMAX_TASK_NAME_LEN                 16
 #define configUSE_16_BIT_TICKS                  1
 #define configIDLE_SHOULD_YIELD                 1
