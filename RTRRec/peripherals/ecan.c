@@ -122,6 +122,7 @@ __reentrant void prvECANReceiveTask( void *pvParameters )
 		xSemaphoreGive( xReceiveMutexHandle );
 
 		RXB0CONbits.RXFUL = 0;	//Clear RXFUL
+		PIR5bits.RXBnIF = 0;	//Clear FIFO interrupt
 		PIE5bits.RXBnIE = 1;	//Enable FIFO interrupt
 	}
 }
@@ -156,7 +157,6 @@ void vECANReceive( ListItem_t *pMsg )
 void __interrupt( irq( RXB1IF ), base( 8 ), low_priority ) prvECANReceiveISR( void )
 {
 	ECANCONbits.EWIN = 0x10 + CANCONbits.FP;	//Set EWIN to map current FIFO buffer into access bank
-	PIR5bits.RXBnIF = 0;
 	PIE5bits.RXBnIE = 0;
 
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
