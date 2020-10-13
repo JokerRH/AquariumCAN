@@ -1,7 +1,7 @@
 #include <xc.h>
 #include "oscillator.h"
 
-void OSCILLATOR_Initialize( void )
+__reentrant void OSCILLATOR_Initialize( void )
 {
 	OSCCON1 = 0x70;	//NOSC EXTOSC; NDIV 1
 	OSCCON3 = 0x00;	//CSWHOLD may proceed; SOSCPWR Low power

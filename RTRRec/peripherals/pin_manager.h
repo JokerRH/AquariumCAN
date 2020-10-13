@@ -22,4 +22,4 @@
    @Example
     PIN_MANAGER_Initialize();
  */
-void PIN_MANAGER_Initialize( void );
+__reentrant void PIN_MANAGER_Initialize( void );

@@ -1,3 +1,3 @@
 #pragma once
 
-void PMD_Initialize( void );
+__reentrant void PMD_Initialize( void );

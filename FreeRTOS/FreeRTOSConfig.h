@@ -1,6 +1,6 @@
 #pragma once
 
-#define configTEMP_SIZE							32
+#define configTEMP_SIZE							20	//Enable -msummary=+psect and check the size of psect temp "Temporary RAM data"
 
 #define configUSE_PREEMPTION                    1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 0

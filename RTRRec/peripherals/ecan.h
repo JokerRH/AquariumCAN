@@ -32,6 +32,6 @@ extern ListItem_t *pxECANCurrentTxLI;
 extern ecan_msg_t *pxECANCurrentMsg;
 extern ListItem_t *pxECANCurrentRxLI;
 
-void ECAN_Initialize( void );
+__reentrant void ECAN_Initialize( void );
 void vECANTransmit( ListItem_t *pMsg );
 void vECANReceive( ListItem_t *pMsg );

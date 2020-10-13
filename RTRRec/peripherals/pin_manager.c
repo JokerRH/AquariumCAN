@@ -1,7 +1,7 @@
 #include <xc.h>
 #include "pin_manager.h"
 
-void PIN_MANAGER_Initialize(void)
+__reentrant void PIN_MANAGER_Initialize(void)
 {
 	/**
 	LATx registers

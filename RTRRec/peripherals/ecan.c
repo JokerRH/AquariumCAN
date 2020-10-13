@@ -164,7 +164,7 @@ void __interrupt( irq( RXB1IF ), base( 8 ), low_priority ) prvECANReceiveISR( vo
 	portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 }
 
-void ECAN_Initialize( void )
+__reentrant void ECAN_Initialize( void )
 {
 	CANCON = 0x80;
 	while( 0x80 != ( CANSTAT & 0xE0 ) ); //Wait until ECAN is in config mode

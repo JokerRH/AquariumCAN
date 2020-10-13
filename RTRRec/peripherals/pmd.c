@@ -1,7 +1,7 @@
 #include <xc.h>
 #include "pmd.h"
 
-void PMD_Initialize( void )
+__reentrant void PMD_Initialize( void )
 {
 	PMD0 = 0x00;	//CLKRMD CLKR enabled; SYSCMD SYSCLK enabled; SCANMD SCANNER enabled; FVRMD FVR enabled; IOCMD IOC enabled; CRCMD CRC enabled; HLVDMD HLVD enabled; NVMMD NVM enabled
 	PMD1 = 0x00;	//NCO1MD DDS(NCO1) enabled; TMR0MD TMR0 enabled; TMR1MD TMR1 enabled; TMR4MD TMR4 enabled; TMR5MD TMR5 enabled; TMR2MD TMR2 enabled; TMR3MD TMR3 enabled; TMR6MD TMR6 enabled

@@ -20,7 +20,7 @@ dw prvPortISR_SWINT shr 2   ; Vector 0 : SWINT
 ORG 70	
 dw prvPortISR_CCP1 shr 2   ; Vector 35 : CCP1
 
-PSECT mytext1,global,class=CODE,reloc=4
+PSECT porttext1,global,class=CODE,reloc=4
 ;
 ; prvPortInitISR
 ;
@@ -57,7 +57,7 @@ prvPortInitISR:
 	GOTO prvPortRestoreContext
 
 
-PSECT mytext2,local,class=CODE,reloc=4
+PSECT porttext2,local,class=CODE,reloc=4
 
 ;
 ; prvPortISR
@@ -197,7 +197,7 @@ RETINS:
 	; Return swapping the shadow registers
 	RETFIE    ; FSR shadow registers are broken!
 
-PSECT mytext4,local,class=CODE,reloc=2
+PSECT porttext4,local,class=CODE,reloc=2
 
 ;
 ; _xPortStartScheduler
@@ -212,7 +212,7 @@ _xPortStartScheduler:
 	GOTO $
 
 
-PSECT mytext5,local,class=CODE,reloc=2
+PSECT porttext5,local,class=CODE,reloc=2
 
 ;
 ; __reentrant StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t pxCode, void *pvParameters )

@@ -111,6 +111,9 @@ void __nonreentrant main( )
 	else //if( PCON0bits.RI == 0 )
 		bReason = 4;
 
+	// Initialize software stack
+	FSR1 = (uint16_t) uxIdleTaskStack;
+
 	INTERRUPT_Initialize( );
 	PMD_Initialize( );
 	PIN_MANAGER_Initialize( );
@@ -146,9 +149,6 @@ void __nonreentrant main( )
 	ECAN_Initialize( );
 	INTCON0bits.GIEL = 1;
 	INTCON0bits.GIEH = 1;
-
-	// Initialize software stack
-	FSR1 = (uint16_t) uxIdleTaskStack;
 
 	//xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", configMINIMAL_STACK_SIZE + 16, NULL, 3, xStackTest, &xBufferTest );
 	xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", configMINIMAL_STACK_SIZE + 16, NULL, 3, xStackTest, &xBufferTest );

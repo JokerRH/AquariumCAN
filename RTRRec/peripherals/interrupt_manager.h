@@ -1,3 +1,3 @@
 #pragma once
 
-void  INTERRUPT_Initialize( void );
+__reentrant void  INTERRUPT_Initialize( void );

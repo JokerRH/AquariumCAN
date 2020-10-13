@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include "interrupt_manager.h"
 
-void INTERRUPT_Initialize( )
+__reentrant void INTERRUPT_Initialize( )
 {
 	INTCON0bits.IPEN = 1;
 

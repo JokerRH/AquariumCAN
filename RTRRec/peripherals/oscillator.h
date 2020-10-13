@@ -1,3 +1,3 @@
 #pragma once
 
-void OSCILLATOR_Initialize( void );
+__reentrant void OSCILLATOR_Initialize( void );
