@@ -28,6 +28,7 @@
 #ifndef PORTMACRO_H
 #define PORTMACRO_H
 
+#include <xc.h>
 #include <stdint.h>
 
 /*-----------------------------------------------------------

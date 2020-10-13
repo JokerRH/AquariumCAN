@@ -70,7 +70,7 @@ prvPortISR_SWINT:
 	BCF BANKMASK( PIR0 ), PIR0_SWIF_POSN, b	; Clear SWINT interrupt flag
 	GOTO SAVE_CTX
 
-PSECT mytext4,local,class=CODE,reloc=4
+PSECT mytext3,local,class=CODE,reloc=4
 prvPortISR_CCP1:
 	MOVFF	INTCON0, PREINC1
 SAVE_CTX:
@@ -197,7 +197,7 @@ RETINS:
 	; Return swapping the shadow registers
 	RETFIE    ; FSR shadow registers are broken!
 
-PSECT mytext3,local,class=CODE,reloc=2
+PSECT mytext4,local,class=CODE,reloc=2
 
 ;
 ; _xPortStartScheduler
@@ -210,3 +210,74 @@ _xPortStartScheduler:
 	BSF BANKMASK( PIR0 ), PIR0_SWIF_POSN, b
  	BSF INTCON0, INTCON0_GIEH_POSN, a
 	GOTO $
+
+
+PSECT mytext5,local,class=CODE,reloc=2
+
+;
+; __reentrant StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t pxCode, void *pvParameters )
+; This function is written such that the current software stack may be located within the region pointed to by pxTopOfStack
+;
+GLOBAL _pxPortInitialiseStack
+SIGNAT _pxPortInitialiseStack, 0x307A
+_pxPortInitialiseStack:
+	; low( pvParameters )
+	; high( pvParameters )
+	; low( pxCode )
+	; high( pxCode )
+	; low( pxTopOfStack )
+	; high( pxTopOfStack )
+	; <- FSR1
+	MOVFF	POSTDEC1, FSR2H
+	MOVFF	POSTDEC1, FSR2H	; high( pxTopOfStack )
+	MOVFF	POSTDEC1, FSR2L	; low( pxTopOfStack )
+	
+	MOVFF	POSTDEC1, btemp + 1		; high( pxCode )
+	MOVFF	POSTDEC1, btemp	; low( pxCode )
+
+	; Push task function argument
+	MOVLW	-1
+	MOVFF	PLUSW1, POSTINC2	; low( pvParameters )
+	MOVFF	INDF1, POSTINC2		; high( pvParameters )
+	MOVWF	POSTINC2, f, a		; space (SP must point to the next available byte for xc8 software stacks)
+
+	; Task context
+	MOVLW	INTCON0_GIEH_MASK | INTCON0_GIEL_MASK | INTCON0_IPEN_MASK
+	MOVWF	POSTINC2, f, a	; INTCON0
+	CLRF	WREG, a
+	MOVWF	POSTINC2, f, a	; STATUS
+	MOVWF	POSTINC2, f, a	; WREG
+	MOVWF	POSTINC2, f, a	; BSR
+	MOVWF	POSTINC2, f, a	; PCLATH
+	MOVWF	POSTINC2, f, a	; PCLATU
+	MOVWF	POSTINC2, f, a	; FSR0L
+	MOVWF	POSTINC2, f, a	; FSR0H
+	MOVWF	POSTINC2, f, a	; FSR2L
+	MOVWF	POSTINC2, f, a	; FSR2H
+	MOVWF	POSTINC2, f, a	; PRODL
+	MOVWF	POSTINC2, f, a	; PRODH
+	MOVWF	POSTINC2, f, a	; TABLAT
+	MOVWF	POSTINC2, f, a	; TBLPTRUL (apparently must be initialized to 0!)
+	MOVWF	POSTINC2, f, a	; TBLPTRUH
+	MOVWF	POSTINC2, f, a	; TBLPTRU
+	MOVWF	POSTINC2, f, a	; STATUS_CSHAD
+	MOVWF	POSTINC2, f, a	; WREG_CSHAD
+	MOVWF	POSTINC2, f, a	; BSR_CSHAD
+	
+	; Initialize btemp
+	REPT	configTEMP_SIZE
+		MOVWF	POSTINC2, f, a
+	ENDM
+
+	; Start address
+	MOVFF	btemp, POSTINC2		; TOSL
+	MOVFF	btemp + 1, POSTINC2	; TOSH
+	; TOSU is always null on PIC18F2xK83 chips
+
+	MOVLW	1
+	MOVWF	POSTINC2, f, a	; Number of addresses (only start address)
+
+	; Return the current top of stack
+	MOVFF	FSR2L, btemp		; low( pxTopOfStack )
+	MOVFF	FSR2H, btemp + 1	; high( pxTopOfStack )
+	RETURN
