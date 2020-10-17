@@ -10,14 +10,30 @@ PSECT ecantext1,global,class=CODE,reloc=4
 ;
 ; prvECANTxISR
 ;
+GLOBAL	___intlo_sp
 GLOBAL	_pxECANCurrentMsg
 GLOBAL	_xECANTransmitHandle
-GLOBAL	vTaskGenericNotifyGiveFromISR@xTaskToNotify
-GLOBAL	vTaskGenericNotifyGiveFromISR@uxIndexToNotify
-GLOBAL	vTaskGenericNotifyGiveFromISR@pxHigherPriorityTaskWoken
-GLOBAL	_vTaskGenericNotifyGiveFromISR
+GLOBAL	_xTaskGenericNotifyFromISR
+SIGNAT	_xTaskGenericNotifyFromISR, 0x6079
 prvECANTxISR:
-	MOVFF	ECANCON, FSR2L		; Create backup of ECANCON
+	LFSR	1, ___intlo_sp	; Load low interrupt stack pointer
+
+	; pxHigherPriorityTaskWoken - Push the address of the element currently on top of the stack
+	CLRF	INDF1, a	; Set xHigherPriorityTaskWoken to pdFALSE (i.e. *pxHigherPriorityTaskWoken)
+	MOVWF	FSR1H, w, a
+	MOVFF	FSR1L, PREINC1
+	MOVWF	PREINC1, f, a
+
+	; pulPreviousNotificationValue - Set to NULL
+	MOVLW	0
+	MOVWF	PREINC1, f, a
+	MOVWF	PREINC1, f, a
+
+	; eAction - Set to eSetValueWithOverwrite (3)
+	MOVLW	3
+	MOVWF	PREINC1, f, a
+
+	; Fetch current window value
 	;MOVWF	CANSTAT, w, a		; Use this if any of B0-B5 are configured as TX buffer
 	BANKSEL( TXB0CON )
 	BTFSC	TXB2CON, TXB0CON_TXBIF_POSN, b
@@ -26,45 +42,34 @@ prvECANTxISR:
 	MOVLW	4
 	BTFSC	TXB0CON, TXB0CON_TXBIF_POSN, b
 	MOVLW	3
-	MOVWF	ECANCON, f, a	; Set window. MDSEL bits are readonly, FIFOWM is irrelevant.
 
-	MOVFF	_pxECANCurrentMsg, FSR0L
-	MOVFF	_pxECANCurrentMsg + 1, FSR0H
+	; ulValue - Upper 24 bits are ignored, just write the same value 4 times
+	MOVWF	PREINC1, f, a
+	MOVWF	PREINC1, f, a
+	MOVWF	PREINC1, f, a
+	MOVWF	PREINC1, f, a
 
-	MOVFF	POSTINC0, RXB0D7	; D7
-	MOVFF	POSTINC0, RXB0D6	; D6
-	MOVFF	POSTINC0, RXB0D5	; D5
-	MOVFF	POSTINC0, RXB0D4	; D4
-	MOVFF	POSTINC0, RXB0D3	; D3
-	MOVFF	POSTINC0, RXB0D2	; D2
-	MOVFF	POSTINC0, RXB0D1	; D1
-	MOVFF	POSTINC0, RXB0D0	; D0
-	MOVFF	POSTINC0, RXB0DLC	; DLC
-	MOVFF	POSTINC0, RXB0EIDL	; EIDL
-	MOVFF	POSTINC0, RXB0EIDH	; EIDH
-	MOVFF	POSTINC0, RXB0SIDL	; SIDL
-	MOVFF	POSTINC0, RXB0SIDH	; SIDH
+	; uxIndexToNotify - Set to 0
+	MOVLW	0
+	MOVWF	PREINC1, f, a
 
-	BSF		RXB0CON, TXB0CON_TXREQ_POSN, a	; Send message
-	MOVFF	FSR2L, ECANCON					; Restore ECANCON
+	; xTaskToNotify  - Set to transmit task
+	MOVFF	_xECANTransmitHandle, PREINC1
+	MOVFF	_xECANTransmitHandle + 1, PREINC1
 
-	MOVFF	_xECANTransmitHandle, vTaskGenericNotifyGiveFromISR@xTaskToNotify
-	MOVFF	_xECANTransmitHandle + 1, vTaskGenericNotifyGiveFromISR@xTaskToNotify + 1
-	LFSR	1, 0
-	BANKSEL( vTaskGenericNotifyGiveFromISR@uxIndexToNotify )
-	MOVFF	FSR1L, vTaskGenericNotifyGiveFromISR@uxIndexToNotify
-	MOVLW	low FSR1L
-	MOVWF	BANKMASK( vTaskGenericNotifyGiveFromISR@pxHigherPriorityTaskWoken ), f, b
-	MOVLW	high FSR1L
-	MOVWF	BANKMASK( vTaskGenericNotifyGiveFromISR@pxHigherPriorityTaskWoken + 1 ), f, b
-	CALL	_vTaskGenericNotifyGiveFromISR
+	; Leave a byte space (SP must point to the next available byte) and call notify
+	; Restore the stack after the call
+	MOVWF	PREINC1, f, a
+	CALL	_xTaskGenericNotifyFromISR
 
+	; Disable TX interrupts
 	BANKSEL( PIR5 )
-	BCF		PIR5, PIR5_TXBnIF_POSN, b
 	BCF		PIE5, PIE5_TXBnIE_POSN, b
 
-	TSTFSZ	FSR1L, a
-	BSF		PIR5, PIR0_SWIF_POSN, b
+	; If( *pxHigherPriorityTaskWoken ) portYIELD_FROM_ISR( );
+	MOVWF	POSTDEC1, w, a	; Pop buffer element
+	TSTFSZ	INDF1, a
+	BSF		PIR0, PIR0_SWIF_POSN, b
 
 	RETFIE	f
 
@@ -82,7 +87,7 @@ _prvECANTxCallback:
 	MOVF	BANKMASK( _pxECANCurrentMsg ), w, b
 	ADDWF	FSR2L, f, a
 	MOVF	BANKMASK( _pxECANCurrentMsg + 1 ), w, b
-	ADDWFC	FSR2L, f, a
+	ADDWFC	FSR2H, f, a
 	MOVF	POSTINC2, w, a
 	MOVFF	POSTINC2, PCLATH
 	CLRF	PCLATU, a

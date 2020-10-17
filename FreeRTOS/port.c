@@ -59,6 +59,7 @@ Changes from V3.2.0
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "../RTRRec/stack.h"
 
 /* MPLAB library include file. */
 #include "timers.h"
@@ -117,8 +118,8 @@ static void prvTickISR( void );
  */
 static void prvLowInterrupt( void );
 
-uint8_t ucCriticalCount = 0;
-StackType_t uxIdleTaskStack[ configMINIMAL_STACK_SIZE + 16 ];
+uint8_t ucCriticalNesting = 0;	//Counter for critical nestings. Saved and restored by each task during context switch
+StackType_t uxIdleTaskStack[ stackSIZE_IDLE ];
 
 void vPortEndScheduler( void )
 {
@@ -194,5 +195,5 @@ __reentrant void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuf
 	/* Pass out the size of the array pointed to by *ppxIdleTaskStackBuffer.
 	Note that, as the array is necessarily of type StackType_t,
 	configMINIMAL_STACK_SIZE is specified in words, not bytes. */
-	*pulIdleTaskStackSize = configMINIMAL_STACK_SIZE + 16;
+	*pulIdleTaskStackSize = stackSIZE_IDLE;
 }

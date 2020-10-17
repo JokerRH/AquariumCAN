@@ -1,6 +1,7 @@
 target_sources( RTRRec
 	PUBLIC
 		main.c
+		stack.h
 		../FreeRTOS/portasm.s
 )
 

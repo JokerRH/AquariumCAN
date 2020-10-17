@@ -2,12 +2,13 @@
 #include <FreeRTOSConfig.h>
 
 GLOBAL _prvSetupTimerInterrupt
-SIGNAT _prvSetupTimerInterrupt, 89
+SIGNAT _prvSetupTimerInterrupt, 0x59
 GLOBAL _vTaskSwitchContext
-SIGNAT _vTaskSwitchContext, 89
+SIGNAT _vTaskSwitchContext, 0x59
 GLOBAL _xTaskIncrementTick
-SIGNAT _xTaskIncrementTick, 89
+SIGNAT _xTaskIncrementTick, 0x59
 GLOBAL _pxCurrentTCB
+GLOBAL _ucCriticalNesting
 
 GLOBAL prvPortInitISR
 PSECT ivt0xA8,global,class=CODE,reloc=2,ovrld,optim=,abs
@@ -63,14 +64,17 @@ PSECT porttext2,local,class=CODE,reloc=4
 ; prvPortISR
 ;
 GLOBAL btemp
-GLOBAL prvPortISR_SWINT
+GLOBAL	___intlo_sp
 GLOBAL prvPortISR_CCP1
+GLOBAL prvPortISR_SWINT
 prvPortISR_SWINT:
 	BANKSEL( PIR0 )
 	BCF BANKMASK( PIR0 ), PIR0_SWIF_POSN, b	; Clear SWINT interrupt flag
 	GOTO SAVE_CTX
 
-PSECT mytext3,local,class=CODE,reloc=4
+
+PSECT porttext3,local,class=CODE,reloc=4
+
 prvPortISR_CCP1:
 	MOVFF	INTCON0, PREINC1
 SAVE_CTX:
@@ -100,6 +104,9 @@ SAVE_CTX:
 		MOVFF	POSTINC2, PREINC1
 	ENDM
 
+	; Save critical nesting
+	MOVFF	_ucCriticalNesting, PREINC1
+
 	; Store the hardware stack pointer in a temp register before we modify it
 	MOVFF	STKPTR, FSR2L
 
@@ -126,6 +133,9 @@ LOOP_SAVE:
 	MOVFF	FSR1L, POSTINC0
 	MOVFF	FSR1H, INDF0
 
+	; Load low interrupt stack pointer
+	LFSR	1, ___intlo_sp
+
 	; Check if the task requested a yield (i.e. SWINT: WREG = 0)
 	MOVF	WREG, w, a
 	BZ	SWITCH
@@ -134,7 +144,7 @@ LOOP_SAVE:
 	BANKSEL( PIR4 )
 	BCF BANKMASK( PIR4 ), PIR4_CCP1IF_POSN, b   ; Clear CCP1 interrupt flag
 	CALL	_xTaskIncrementTick, 0
-	TSTFSZ	WREG, a
+	TSTFSZ	btemp, a
 SWITCH:
 	CALL	_vTaskSwitchContext, 0
 
@@ -163,6 +173,9 @@ LOOP_RESTORE:
 		MOVFF	POSTDEC1, TOSL
 		DECFSZ	WREG, a
 		GOTO LOOP_RESTORE
+
+	; Restore critical nesting
+	MOVFF	POSTDEC1, _ucCriticalNesting
 
 	; Restore temp registers
 	LFSR	2, btemp + configTEMP_SIZE - 1
@@ -203,7 +216,7 @@ PSECT porttext4,local,class=CODE,reloc=2
 ; _xPortStartScheduler
 ;
 GLOBAL _xPortStartScheduler
-SIGNAT _xPortStartScheduler, 89
+SIGNAT _xPortStartScheduler, 0x59
 _xPortStartScheduler:
 	CALL _prvSetupTimerInterrupt
 	BANKSEL( PIR0 )
@@ -232,14 +245,15 @@ _pxPortInitialiseStack:
 	MOVFF	POSTDEC1, FSR2H	; high( pxTopOfStack )
 	MOVFF	POSTDEC1, FSR2L	; low( pxTopOfStack )
 	
-	MOVFF	POSTDEC1, btemp + 1		; high( pxCode )
-	MOVFF	POSTDEC1, btemp	; low( pxCode )
+	MOVFF	POSTDEC1, btemp + 1	; high( pxCode )
+	MOVFF	POSTDEC1, btemp		; low( pxCode )
 
 	; Push task function argument
 	MOVLW	-1
 	MOVFF	PLUSW1, POSTINC2	; low( pvParameters )
-	MOVFF	INDF1, POSTINC2		; high( pvParameters )
+	MOVFF	POSTDEC1, POSTINC2	; high( pvParameters ); FSR1 now points to pvParameters (i.e. stack has been restored)
 	MOVWF	POSTINC2, f, a		; space (SP must point to the next available byte for xc8 software stacks)
+	;MOVWF	POSTDEC1, w, a
 
 	; Task context
 	MOVLW	INTCON0_GIEH_MASK | INTCON0_GIEL_MASK | INTCON0_IPEN_MASK
@@ -268,6 +282,10 @@ _pxPortInitialiseStack:
 	REPT	configTEMP_SIZE
 		MOVWF	POSTINC2, f, a
 	ENDM
+
+	; Initialize critical nesting
+	; WREG = 0
+	MOVWF	POSTINC2, f, a
 
 	; Start address
 	MOVFF	btemp, POSTINC2		; TOSL

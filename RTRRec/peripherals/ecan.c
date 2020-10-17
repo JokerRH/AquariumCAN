@@ -2,6 +2,7 @@
 #include <limits.h>
 #include <stdbool.h>
 #include "ecan.h"
+#include "../stack.h"
 
 #include "FreeRTOS.h"
 #include "FreeRTOS/include/queue.h"
@@ -12,7 +13,7 @@
 
 //Transmit variables
 TaskHandle_t xECANTransmitHandle;
-static StackType_t xECANTransmitStack[ configMINIMAL_STACK_SIZE + 16 ];
+static StackType_t xECANTransmitStack[ stackSIZE_CANTX ];
 static StaticTask_t xECANTransmitBuffer;
 static volatile UBaseType_t uxTopReadyPriority;
 ListItem_t *pxECANCurrentTxLI;
@@ -29,7 +30,7 @@ PRIVILEGED_DATA static List_t *volatile pxOverflowDelayedTaskList;	/*< Points to
 
 //Receive variables
 static TaskHandle_t xECANReceiveHandle;
-static StackType_t xECANReceiveStack[ configMINIMAL_STACK_SIZE + 16 ];
+static StackType_t xECANReceiveStack[ stackSIZE_CANRX ];
 static StaticTask_t xECANReceiveBuffer;
 ListItem_t *pxECANCurrentRxLI;
 
@@ -49,6 +50,13 @@ __reentrant void prvECANTransmitTask( void *pvParameters )
 	uxTopReadyPriority = configMAX_PRIORITIES - 1;
 	while( 1 )
 	{
+		//Clear TX interrupt flag and enable TX interrupts
+		PIR5bits.TXBnIF = 0;
+		PIE5bits.TXBnIE = 1;
+
+		//Wait for a transmit buffer to be ready
+		xTaskNotifyWait( 0, 0, NULL, portMAX_DELAY );
+
 		// Select a new message to transmit
 		xSemaphoreTake( xTransmitMutexHandle, portMAX_DELAY );
 		uxTopPriority = uxTopReadyPriority;	//Must be updated. While the mutex was released to transmit another task could have queued a higher priority message.
@@ -87,14 +95,38 @@ __reentrant void prvECANTransmitTask( void *pvParameters )
 
 		//Fetch the current list item, then release the mutex
 		pxECANCurrentTxLI = listGET_HEAD_ENTRY( &( pxReadyMessagesLists[ uxTopReadyPriority ] ) );
-		uxListRemove( pxECANCurrentTxLI );
-		xSemaphoreGive( xTransmitMutexHandle );
-
 		pxECANCurrentMsg = listGET_LIST_ITEM_OWNER( pxECANCurrentTxLI );
 
-		//Request transmition and wait
-		PIE5bits.TXBnIE = 1;
-		ulTaskNotifyTake( true, portMAX_DELAY );
+		//Load the message into a transmit buffer
+		//Since we know that a buffer is available TaskNofityTake will always return a valid buffer.
+		vTaskSuspend( xECANReceiveHandle );	//We need temporary access to the ECANCON window, suspend the receive task to prevent it from acessing it.
+		static uint8_t ucECANCON;
+		ucECANCON = ECANCON;
+		ECANCON = (uint8_t) ulTaskNotifyTake( true, 0 );	//Set window. MDSEL bits are readonly, FIFOWM is irrelevant.
+
+		asm( "MOVFF	_pxECANCurrentMsg, FSR0L" );
+		asm( "MOVFF	_pxECANCurrentMsg + 1, FSR0H" );
+
+		asm( "MOVFF	POSTINC0, RXB0D7" );		// D7
+		asm( "MOVFF	POSTINC0, RXB0D6" );		// D6
+		asm( "MOVFF	POSTINC0, RXB0D5" );		// D5
+		asm( "MOVFF	POSTINC0, RXB0D4" );		// D4
+		asm( "MOVFF	POSTINC0, RXB0D3" );		// D3
+		asm( "MOVFF	POSTINC0, RXB0D2" );		// D2
+		asm( "MOVFF	POSTINC0, RXB0D1" );		// D1
+		asm( "MOVFF	POSTINC0, RXB0D0" );		// D0
+		asm( "MOVFF	POSTINC0, RXB0DLC" );	// DLC
+		asm( "MOVFF	POSTINC0, RXB0EIDL" );	// EIDL
+		asm( "MOVFF	POSTINC0, RXB0EIDH" );	// EIDH
+		asm( "MOVFF	POSTINC0, RXB0SIDL" );	// SIDL
+		asm( "MOVFF	POSTINC0, RXB0SIDH" );	// SIDH
+
+		RXB0CON |= 1 << _TXB0CON_TXREQ_POSN;			// Send message
+		ECANCON = ucECANCON;							// Restore ECANCON
+		vTaskResume( xECANReceiveHandle );				//Resume the receive task
+
+		uxListRemove( pxECANCurrentTxLI );				//The message is flagged for transmission, remove from waiting list
+		xSemaphoreGive( xTransmitMutexHandle );
 
 		//Message has been loaded into a transmission buffer, execute callback.
 		//pxCurrentMsg is now free.
@@ -314,13 +346,13 @@ __reentrant void ECAN_Initialize( void )
 	for( UBaseType_t uxPriority = (UBaseType_t) 0U; uxPriority < (UBaseType_t) configMAX_PRIORITIES; uxPriority++ )
 		vListInitialise( &( pxReadyMessagesLists[ uxPriority ] ) );
 
-	xECANTransmitHandle = xTaskCreateStatic( prvECANTransmitTask, (const portCHAR*) "ECANTX", configMINIMAL_STACK_SIZE + 16, NULL, 0, xECANTransmitStack, &xECANTransmitBuffer );
+	xECANTransmitHandle = xTaskCreateStatic( prvECANTransmitTask, (const portCHAR*) "ECANTX", stackSIZE_CANTX, NULL, 0, xECANTransmitStack, &xECANTransmitBuffer );
 	
 	//Initialise receiver
 	xReceiveMutexHandle = xSemaphoreCreateMutexStatic( &xReceiveMutexBuffer );
 	configASSERT( xReceiveMutexHandle );
 	vListInitialise( &xReceiveList );
-	xECANReceiveHandle = xTaskCreateStatic( prvECANReceiveTask, (const portCHAR*) "ECANRX", configMINIMAL_STACK_SIZE + 16, NULL, 0, xECANReceiveStack, &xECANReceiveBuffer );
+	xECANReceiveHandle = xTaskCreateStatic( prvECANReceiveTask, (const portCHAR*) "ECANRX", stackSIZE_CANRX, NULL, 0, xECANReceiveStack, &xECANReceiveBuffer );
 
 	//Enable interrupts
 	TXBIEbits.TXB0IE = 1;

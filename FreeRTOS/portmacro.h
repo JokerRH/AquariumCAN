@@ -71,26 +71,22 @@ typedef unsigned char UBaseType_t;
 /*-----------------------------------------------------------*/
     
 /* Critical section management. */
-#define portDISABLE_INTERRUPTS()    INTCON0bits.GIEH = 0
-#define portENABLE_INTERRUPTS()		INTCON0bits.GIEH = 1
+#define portDISABLE_INTERRUPTS( )	INTCON0bits.GIEH = 0
+#define portENABLE_INTERRUPTS( )	INTCON0bits.GIEH = 1
 
-/* Push the INTCON register onto the stack, then disable interrupts. */
-extern uint8_t ucCriticalCount;
-#define portENTER_CRITICAL()		PREINC1 = INTCON0;\
-                                    portDISABLE_INTERRUPTS( )
+extern uint8_t ucCriticalNesting;
+#define portENTER_CRITICAL( )	portDISABLE_INTERRUPTS( );\
+								ucCriticalNesting++
 
-/* Retrieve the INTCON register from the stack, and enable interrupts
-if they were saved as being enabled.  Don't modify any other bits
-within the INTCON register as these may have legitimately have been
-modified within the critical region. */
-#define portEXIT_CRITICAL( )	if( POSTDEC1 & portGLOBAL_INT_ENABLE_BIT )\
-                                    portENABLE_INTERRUPTS( )
+#define portEXIT_CRITICAL( )	if( --ucCriticalNesting == 0 )\
+									portENABLE_INTERRUPTS( )
 
 /*-----------------------------------------------------------*/
 
-/* Task utilities. */
+//portYIELD may be called from within a section with interrupts disabled (note: do _NOT_ use the _CRITICAL macros for this!)
+//In this case, the interrupt will be executed _after_ portENABLE_INTERRUPTS has run, allowing the context switcher to return with interrupts disabled.
+//If interrupts were already enabled, portENABLE_INTERRUPTS is called superfluously and has no effect.
 #define portYIELD( )	PREINC1 = INTCON0;\
-						portDISABLE_INTERRUPTS( );\
 						PIR0bits.SWIF = 1;\
 						portENABLE_INTERRUPTS( )
 

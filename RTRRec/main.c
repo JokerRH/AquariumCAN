@@ -6,12 +6,13 @@
 #include "peripherals/pmd.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "stack.h"
 
 TaskHandle_t xHandleTest;
-StackType_t xStackTest[ configMINIMAL_STACK_SIZE + 16 ];
+StackType_t xStackTest[ stackSIZE_TEST ];
 StaticTask_t xBufferTest;
 
-#if 0
+#if 1
 static __reentrant void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *passedInEIDH, uint8_t *passedInEIDL, uint8_t *passedInSIDH, uint8_t *passedInSIDL )
 {
 	*passedInEIDH = 0;
@@ -64,7 +65,7 @@ __reentrant void TaskTxTest( void* pvParameters )
 			ucCount = 4;
 		ucCount--;
 
-		vTaskDelay( 20 );
+		vTaskDelay( 2 );
 	}
 }
 #endif
@@ -95,7 +96,7 @@ __reentrant void TaskRxTest( void* pvParameters )
 #endif
 
 extern StackType_t uxIdleTaskStack[ configMINIMAL_STACK_SIZE + 16 ];
-void __nonreentrant main( )
+void main( )
 {
 	uint8_t bReason = 0;
 	if( PCON0bits.STKUNF )
@@ -112,7 +113,7 @@ void __nonreentrant main( )
 		bReason = 4;
 
 	// Initialize software stack
-	FSR1 = (uint16_t) uxIdleTaskStack;
+	//FSR1 = (uint16_t) uxIdleTaskStack;
 
 	INTERRUPT_Initialize( );
 	PMD_Initialize( );
@@ -150,8 +151,10 @@ void __nonreentrant main( )
 	INTCON0bits.GIEL = 1;
 	INTCON0bits.GIEH = 1;
 
-	//xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", configMINIMAL_STACK_SIZE + 16, NULL, 3, xStackTest, &xBufferTest );
-	xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", configMINIMAL_STACK_SIZE + 16, NULL, 3, xStackTest, &xBufferTest );
+	xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
+	//xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", stackSIZE_TEST + 16, NULL, 3, xStackTest, &xBufferTest );
 	vTaskStartScheduler( );
+	xTaskGenericNotifyFromISR( NULL, 0, 0, 0, NULL, NULL ); //Circumvent compiler bug on "warning" 1498 that removes code.
+    xTaskIncrementTick( );
 	while( 1 );
 }
