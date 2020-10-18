@@ -83,13 +83,16 @@ extern uint8_t ucCriticalNesting;
 
 /*-----------------------------------------------------------*/
 
-//portYIELD may be called from within a section with interrupts disabled (note: do _NOT_ use the _CRITICAL macros for this!)
+//portYIELD may be called from within a section with interrupts disabled
 //In this case, the interrupt will be executed _after_ portENABLE_INTERRUPTS has run, allowing the context switcher to return with interrupts disabled.
 //If interrupts were already enabled, portENABLE_INTERRUPTS is called superfluously and has no effect.
-#define portYIELD( )	PREINC1 = INTCON0;\
-						PIR0bits.SWIF = 1;\
-						portENABLE_INTERRUPTS( )
+#define portYIELD( )	{\
+							PIR0bits.SWIF = 1;\
+							portENABLE_INTERRUPTS( );\
+						}
 
+//If a high priority interrupt is executed within a critical section do not allow a yield to switch the context!
+//Instead, the interrupt flag will remain set until the critical section is exited, upon which the yield is executed.
 #define portYIELD_FROM_ISR( x )	if( x )\
 									PIR0bits.SWIF = 1
 

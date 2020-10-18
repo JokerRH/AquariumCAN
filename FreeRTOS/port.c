@@ -137,7 +137,6 @@ void prvSetupTimerInterrupt( void )
 {
 	const uint32_t ulConstCompareValue = 0xFFF7;//( ( configCPU_CLOCK_HZ / portTIMER_FOSC_SCALE ) / configTICK_RATE_HZ );
 	uint32_t ulCompareValue;
-	uint8_t ucByte;
 
 	/*
 	Interrupts are disabled when this function is called.
@@ -178,7 +177,7 @@ void prvSetupTimerInterrupt( void )
 	implementation of vApplicationGetIdleTaskMemory() to provide the memory that is
 	used by the Idle task.
 */
-__reentrant void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer, uint32_t *pulIdleTaskStackSize )
+void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer, uint32_t *pulIdleTaskStackSize )
 {
 	/*  If the buffers to be provided to the Idle task are declared inside this
 	function then they must be declared static ? otherwise they will be allocated on
@@ -196,4 +195,18 @@ __reentrant void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuf
 	Note that, as the array is necessarily of type StackType_t,
 	configMINIMAL_STACK_SIZE is specified in words, not bytes. */
 	*pulIdleTaskStackSize = stackSIZE_IDLE;
+}
+
+#include "../RTRRec/peripherals/device_config.h"
+#include <xc.h>
+void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
+{
+	LATAbits.LATA4 = 1;
+	LATAbits.LATA5 = 1;
+	while( 1 )
+	{
+		LATAbits.LATA4 = ~LATAbits.LATA4;
+		LATAbits.LATA5 = ~LATAbits.LATA5;
+		__delay_ms( 1000 );
+	}
 }

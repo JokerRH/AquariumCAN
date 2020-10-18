@@ -79,23 +79,23 @@ bool RxCallback( void )
 }
 
 asm( "GLOBAL _TaskRxTest" );
-__reentrant void TaskRxTest( void* pvParameters )
+void TaskRxTest( void *pvParameters )
 {
-	static uint8_t ucCount;
-	static ListItem_t li;
+	uint8_t ucCount;
+	ListItem_t li;
 	vListInitialiseItem( &li );
 	listSET_LIST_ITEM_OWNER( &li, RxCallback );
 	vECANReceive( &li );
 	while( 1 )
 	{
-		ucCount = ulTaskNotifyTake( true, portMAX_DELAY );
+		ucCount = (uint8_t) ulTaskNotifyTake( true, portMAX_DELAY );
 		LATAbits.LATA4 = ucCount & 1;
 		LATAbits.LATA5 = ( ucCount >> 1 ) & 1;
 	}
 }
 #endif
 
-extern StackType_t uxIdleTaskStack[ configMINIMAL_STACK_SIZE + 16 ];
+extern StackType_t uxIdleTaskStack[ stackSIZE_IDLE ];
 void main( )
 {
 	uint8_t bReason = 0;
@@ -151,10 +151,9 @@ void main( )
 	INTCON0bits.GIEL = 1;
 	INTCON0bits.GIEH = 1;
 
-	xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
-	//xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", stackSIZE_TEST + 16, NULL, 3, xStackTest, &xBufferTest );
+	//xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
+	xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
 	vTaskStartScheduler( );
 	xTaskGenericNotifyFromISR( NULL, 0, 0, 0, NULL, NULL ); //Circumvent compiler bug on "warning" 1498 that removes code.
-    xTaskIncrementTick( );
 	while( 1 );
 }

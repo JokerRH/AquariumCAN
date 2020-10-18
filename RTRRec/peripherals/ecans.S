@@ -69,7 +69,7 @@ prvECANTxISR:
 	; If( *pxHigherPriorityTaskWoken ) portYIELD_FROM_ISR( );
 	MOVWF	POSTDEC1, w, a	; Pop buffer element
 	TSTFSZ	INDF1, a
-	BSF		PIR0, PIR0_SWIF_POSN, b
+	BSF		PIR0, PIR0_SWIF_POSN, b	; Yield
 
 	RETFIE	f
 

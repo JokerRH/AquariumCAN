@@ -70,14 +70,9 @@ GLOBAL prvPortISR_SWINT
 prvPortISR_SWINT:
 	BANKSEL( PIR0 )
 	BCF BANKMASK( PIR0 ), PIR0_SWIF_POSN, b	; Clear SWINT interrupt flag
-	GOTO SAVE_CTX
-
-
-PSECT porttext3,local,class=CODE,reloc=4
+	; Continue to prvPortISR_CCP1
 
 prvPortISR_CCP1:
-	MOVFF	INTCON0, PREINC1
-SAVE_CTX:
 	; Save the context
 	MOVFF	STATUS_SHAD, PREINC1
 	MOVFF	WREG_SHAD, PREINC1
@@ -155,11 +150,11 @@ prvPortRestoreContext:
 	; Set FSR0 to point to pxCurrentTCB->pxTopOfStack
 	MOVFF	_pxCurrentTCB, FSR0L
 	MOVFF	_pxCurrentTCB + 1, FSR0H
-	
+
 	; De-reference FSR0 to set the address it holds into FSR1 (i.e. *( pxCurrentTCB->pxTopOfStack ))
 	MOVFF	POSTINC0, FSR1L
 	MOVFF	INDF0, FSR1H
-	
+
 	; Copy software to hardware stack
 	CLRF	STKPTR, a
 	MOVF	POSTDEC1, w, a
@@ -204,11 +199,12 @@ LOOP_RESTORE:
 	MOVFF	POSTDEC1, STATUS
 	
 	; Restore INTCON0
-	BTFSS	POSTDEC1, INTCON0_GIEH_POSN, a
-	BCF	INTCON0, INTCON0_GIEH_POSN, a	; GIEH must have been high for the interrupt to get triggered. Restore saved value.
+	BANKSEL( _ucCriticalNesting )
+	TSTFSZ	BANKMASK( _ucCriticalNesting ), b
+	BCF	INTCON0, INTCON0_GIEH_POSN, a	; The current task yielded from within a critical section. Disable interrupts
 RETINS:
 	; Return swapping the shadow registers
-	RETFIE    ; FSR shadow registers are broken!
+	RETFIE	; FSR shadow registers are broken!
 
 PSECT porttext4,local,class=CODE,reloc=2
 
@@ -253,11 +249,8 @@ _pxPortInitialiseStack:
 	MOVFF	PLUSW1, POSTINC2	; low( pvParameters )
 	MOVFF	POSTDEC1, POSTINC2	; high( pvParameters ); FSR1 now points to pvParameters (i.e. stack has been restored)
 	MOVWF	POSTINC2, f, a		; space (SP must point to the next available byte for xc8 software stacks)
-	;MOVWF	POSTDEC1, w, a
 
 	; Task context
-	MOVLW	INTCON0_GIEH_MASK | INTCON0_GIEL_MASK | INTCON0_IPEN_MASK
-	MOVWF	POSTINC2, f, a	; INTCON0
 	CLRF	WREG, a
 	MOVWF	POSTINC2, f, a	; STATUS
 	MOVWF	POSTINC2, f, a	; WREG

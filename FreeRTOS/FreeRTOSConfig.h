@@ -1,6 +1,6 @@
 #pragma once
 
-#define configTEMP_SIZE							20	//Enable -msummary=+psect and check the size of psect temp "Temporary RAM data"
+#define configTEMP_SIZE							0x20	//Enable -msummary=+psect and check the size of psect temp "Temporary RAM data"
 
 #define configUSE_PREEMPTION                    1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 0
@@ -9,7 +9,6 @@
 #define configSYSTICK_CLOCK_HZ                  1
 #define configTICK_RATE_HZ                      1
 #define configMAX_PRIORITIES                    4
-#define configMINIMAL_STACK_SIZE                ( 24 + configTEMP_SIZE )	//Absolut minimal stack size just to call the function. Each hardware stack entry (i.e. nested function call) requires an additional 2 bytes!
 #define configMAX_TASK_NAME_LEN                 16
 #define configUSE_16_BIT_TICKS                  1
 #define configIDLE_SHOULD_YIELD                 1
@@ -36,7 +35,7 @@
 /* Hook function related definitions. */
 #define configUSE_IDLE_HOOK                     0
 #define configUSE_TICK_HOOK                     0
-#define configCHECK_FOR_STACK_OVERFLOW          0
+#define configCHECK_FOR_STACK_OVERFLOW          2
 #define configUSE_MALLOC_FAILED_HOOK            0
 #define configUSE_DAEMON_TASK_STARTUP_HOOK      0
 
@@ -88,5 +87,7 @@
 #define INCLUDE_xTaskAbortDelay                 0
 #define INCLUDE_xTaskGetHandle                  0
 #define INCLUDE_xTaskResumeFromISR              1
+
+#define configMINIMAL_STACK_SIZE                ( 24 + configTEMP_SIZE + ( configCHECK_FOR_STACK_OVERFLOW > 1 ? 16 : 0 ) )	//Absolut minimal stack size just to call the function. Each hardware stack entry (i.e. nested function call) requires an additional 2 bytes!
 
 /* A header file that defines trace macro can be included here. */
