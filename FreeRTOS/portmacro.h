@@ -108,10 +108,8 @@ extern uint8_t ucCriticalNesting;
 	#define portREMOVE_STATIC_QUALIFIER
 #endif
 
-
-#define portNOP()				_asm	\
-									NOP \
-								_endasm
+extern void vECANSwitchDelayedLists( void );
+#define portTICK_OVERFLOW( )	vECANSwitchDelayedLists( )
 
 #endif /* PORTMACRO_H */
 

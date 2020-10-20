@@ -13,7 +13,7 @@ StackType_t xStackTest[ stackSIZE_TEST ];
 StaticTask_t xBufferTest;
 
 #if 1
-static __reentrant void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *passedInEIDH, uint8_t *passedInEIDL, uint8_t *passedInSIDH, uint8_t *passedInSIDL )
+static void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *passedInEIDH, uint8_t *passedInEIDL, uint8_t *passedInSIDH, uint8_t *passedInSIDL )
 {
 	*passedInEIDH = 0;
 	*passedInEIDL = 0;
@@ -26,11 +26,12 @@ static __reentrant void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *pass
 asm( "GLOBAL _TxCallback" );
 void TxCallback( void )
 {
-	xTaskNotifyGive( xHandleTest );
+	//xTaskNotifyGive( xHandleTest );
+	vECANTransmitDelayed( pxECANCurrentTxLI, 2 );
 }
 
 asm( "GLOBAL _TaskTxTest" );
-__reentrant void TaskTxTest( void* pvParameters )
+void TaskTxTest( void* pvParameters )
 {
 	static uint8_t ucCount;
 	static ListItem_t li;
@@ -112,9 +113,6 @@ void main( )
 	else //if( PCON0bits.RI == 0 )
 		bReason = 4;
 
-	// Initialize software stack
-	//FSR1 = (uint16_t) uxIdleTaskStack;
-
 	INTERRUPT_Initialize( );
 	PMD_Initialize( );
 	PIN_MANAGER_Initialize( );
@@ -151,8 +149,8 @@ void main( )
 	INTCON0bits.GIEL = 1;
 	INTCON0bits.GIEH = 1;
 
-	//xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
-	xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
+	xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
+	//xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
 	vTaskStartScheduler( );
 	xTaskGenericNotifyFromISR( NULL, 0, 0, 0, NULL, NULL ); //Circumvent compiler bug on "warning" 1498 that removes code.
 	while( 1 );

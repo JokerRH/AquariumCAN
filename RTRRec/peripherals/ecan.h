@@ -5,8 +5,6 @@
 #include <FreeRTOS.h>
 #include <FreeRTOS/include/list.h>
 
-#define ecanNOTIFICATION_IDX	0
-
 typedef void( *txcallback_t )( void );	//Use pxECANCurrentTxLI and pxECANCurrentMsg to access the corresponding list item/message
 typedef struct
 {
@@ -24,6 +22,7 @@ typedef struct
 	uint8_t ucSIDL;
 	uint8_t ucSIDH;
 	txcallback_t pvCallback;
+	UBaseType_t puxPriority;
 } ecan_msg_t;
 
 typedef bool( *rxcallback_t )( void );
@@ -33,5 +32,6 @@ extern ecan_msg_t *pxECANCurrentMsg;
 extern ListItem_t *pxECANCurrentRxLI;
 
 __reentrant void ECAN_Initialize( void );
-void vECANTransmit( ListItem_t *pMsg );
-void vECANReceive( ListItem_t *pMsg );
+void vECANTransmit( ListItem_t *pxLI );
+void vECANReceive( ListItem_t *pxLI );
+void vECANTransmitDelayed( ListItem_t *pxLI, TickType_t xTicksToWait );
