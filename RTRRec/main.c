@@ -7,10 +7,45 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "stack.h"
+#include <FreeRTOS/include/semphr.h>
 
 TaskHandle_t xHandleTest;
 StackType_t xStackTest[ stackSIZE_TEST ];
 StaticTask_t xBufferTest;
+
+static SemaphoreHandle_t xRetransmitMutexHandle;
+static StaticSemaphore_t xRetransmitMutexBuffer;
+
+ListItem_t xTransmitLI;
+static ecan_msg_t xTransmitMsg;
+
+#if 0
+asm( "GLOBAL _TaskTxTest" );
+void TaskTxTest( void* pvParameters )
+{
+	B5DLC = 1;
+	B5D0 = 3;
+	B5SIDH = 0x24;
+	B5SIDL = 0x80;
+	B5CON = 0x4;
+
+	static uint8_t ucCount = 3;
+	while( 1 )
+	{
+		LATAbits.LATA4 = ucCount & 1;
+		LATAbits.LATA5 = ( ucCount >> 1 ) & 1;
+
+		vTaskDelay( 2 );
+
+		if( ucCount == 0 )
+			ucCount = 4;
+		ucCount--;
+
+		while( B5D0 != ucCount )
+			B5D0 = ucCount;
+	}
+}
+#endif
 
 #if 1
 static void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *passedInEIDH, uint8_t *passedInEIDL, uint8_t *passedInSIDH, uint8_t *passedInSIDL )
@@ -26,75 +61,88 @@ static void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *passedInEIDH, ui
 asm( "GLOBAL _TxCallback" );
 void TxCallback( void )
 {
-	//xTaskNotifyGive( xHandleTest );
-	vECANTransmitDelayed( pxECANCurrentTxLI, 2 );
+	xSemaphoreTake( xRetransmitMutexHandle, portMAX_DELAY );
+	if( xTransmitMsg.ucD0 )
+		vECANTransmitDelayed( pxECANCurrentTxLI, 2 );
+	else
+		xTaskNotifyGive( xHandleTest );
+	xSemaphoreGive( xRetransmitMutexHandle );
 }
 
-asm( "GLOBAL _TaskTxTest" );
-void TaskTxTest( void* pvParameters )
-{
-	static uint8_t ucCount;
-	static ListItem_t li;
-	static ecan_msg_t msg;
-
-	ucCount = 3;
-
-	msg.pvCallback = TxCallback;
-	vListInitialiseItem( &li );
-	listSET_LIST_ITEM_OWNER( &li, &msg );
-	convertCANid2Reg( 0x124, &msg.ucEIDH, &msg.ucEIDL, &msg.ucSIDH, &msg.ucSIDL );
-	msg.ucDLC = 1;
-
-	while( 1 )
-	{
-		LATAbits.LATA4 = ucCount & 1;
-		LATAbits.LATA5 = ( ucCount >> 1 ) & 1;
-
-		msg.ucD7 = 0x77;
-		msg.ucD6 = 0x66;
-		msg.ucD5 = 0x55;
-		msg.ucD4 = 0x44;
-		msg.ucD3 = 0x33;
-		msg.ucD2 = 0x22;
-		msg.ucD1 = 0x11;
-		msg.ucD0 = ucCount;
-
-		vECANTransmit( &li );
-		ulTaskNotifyTake( true, portMAX_DELAY );
-
-		if( ucCount == 0 )
-			ucCount = 4;
-		ucCount--;
-
-		vTaskDelay( 2 );
-	}
-}
-#endif
-
-#if 1
 asm( "GLOBAL _RxCallback" );
 bool RxCallback( void )
 {
-	xTaskNotify( xHandleTest, RXB0D0, eSetValueWithOverwrite );
+	if( RXB0DLCbits.RXRTR )
+		return false;
+
+	xSemaphoreTake( xRetransmitMutexHandle, portMAX_DELAY );
+	if( xECANAbortTransmit( &xTransmitLI ) )
+		xTaskNotifyGive( xHandleTest );
+	xTransmitMsg.ucD0 = 0;
+	xTransmitMsg.ucD1 = RXB0D0;
+	xSemaphoreGive( xRetransmitMutexHandle );
+
+	vTaskResume( xHandleTest );
 	return true;
 }
 
 asm( "GLOBAL _TaskRxTest" );
 void TaskRxTest( void *pvParameters )
 {
-	uint8_t ucCount;
+	xRetransmitMutexHandle = xSemaphoreCreateMutexStatic( &xRetransmitMutexBuffer );
+	xTransmitMsg.ucD0 = true;
+
+	//Initialise receiver
 	ListItem_t li;
 	vListInitialiseItem( &li );
 	listSET_LIST_ITEM_OWNER( &li, RxCallback );
 	vECANReceive( &li );
+
+	//Initialise RTR message
+	xTransmitMsg.pvCallback = TxCallback;
+	vListInitialiseItem( &xTransmitLI );
+	listSET_LIST_ITEM_OWNER( &xTransmitLI, &xTransmitMsg );
+	convertCANid2Reg( 0x124, &xTransmitMsg.ucEIDH, &xTransmitMsg.ucEIDL, &xTransmitMsg.ucSIDH, &xTransmitMsg.ucSIDL );
+	xTransmitMsg.ucDLC = 0x40;
+	vECANTransmit( &xTransmitLI );
+
 	while( 1 )
 	{
-		ucCount = (uint8_t) ulTaskNotifyTake( true, portMAX_DELAY );
+		//Wait for message
+		xSemaphoreTake( xRetransmitMutexHandle, portMAX_DELAY );
+		if( xTransmitMsg.ucD0 )
+		{
+			vTaskSuspendAll( );
+			xSemaphoreGive( xRetransmitMutexHandle );
+			vTaskSuspend( NULL );
+			(void) xTaskResumeAll( );
+			xSemaphoreTake( xRetransmitMutexHandle, portMAX_DELAY );
+		}
+		
+		const uint8_t ucCount = xTransmitMsg.ucD1;
+		xSemaphoreGive( xRetransmitMutexHandle );
+		
 		LATAbits.LATA4 = ucCount & 1;
 		LATAbits.LATA5 = ( ucCount >> 1 ) & 1;
+
+		//Wait for transmit buffer
+		(void) ulTaskNotifyTake( true, portMAX_DELAY );
+		xTransmitMsg.ucD0 = true;
+		vECANTransmitDelayed( &xTransmitLI, 1 );
 	}
 }
 #endif
+
+void __interrupt( irq( ERRIF ), base( 8 ), low_priority ) prvCanErrorISR( void )
+{
+	PIR5bits.ERRIF = 0;
+    __delay_ms( 50 );
+}
+
+void __interrupt( irq( IRXIF ), base( 8 ), low_priority ) prvCanIRXErrorISR( void )
+{
+	PIR5bits.IRXIF = 0;
+}
 
 extern StackType_t uxIdleTaskStack[ stackSIZE_IDLE ];
 void main( )
@@ -149,8 +197,8 @@ void main( )
 	INTCON0bits.GIEL = 1;
 	INTCON0bits.GIEH = 1;
 
-	xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
-	//xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
+	//xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
+	xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", stackSIZE_TEST, NULL, 2, xStackTest, &xBufferTest );
 	vTaskStartScheduler( );
 	xTaskGenericNotifyFromISR( NULL, 0, 0, 0, NULL, NULL ); //Circumvent compiler bug on "warning" 1498 that removes code.
 	while( 1 );

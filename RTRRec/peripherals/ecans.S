@@ -81,15 +81,38 @@ PSECT ecantext2,global,class=CODE,reloc=2
 ;
 GLOBAL	_pxECANCurrentMsg
 GLOBAL	_prvECANTxCallback
+GLOBAL	_xTransmitMutexHandle
+GLOBAL	_xQueueGenericSend
 _prvECANTxCallback:
-	BANKSEL( _pxECANCurrentMsg )
-	LFSR	2, 13
-	MOVF	BANKMASK( _pxECANCurrentMsg ), w, b
-	ADDWF	FSR2L, f, a
-	MOVF	BANKMASK( _pxECANCurrentMsg + 1 ), w, b
-	ADDWFC	FSR2H, f, a
-	MOVF	POSTINC2, w, a
-	MOVFF	POSTINC2, PCLATH
+	LFSR	0, _pxECANCurrentMsg	; FSR0 = &pxECANCurrentMsg
+	MOVF	POSTINC0, w, a
+	MOVFF	INDF0, FSR0H
+	MOVWF	FSR0L, f, a	; FSR0 = pxECANCurrentMsg
+	ADDFSR	0, 13		; FSR0 = &( pxECANCurrentMsg->pvCallback )
+
+	; Push( pxECANCurrentMsg->pvCallback )
+	MOVFF	POSTINC0, POSTINC1  //Low
+	MOVFF	POSTINC0, POSTINC1  //High
+
+	;
+	; Release the mutex
+	;
+	CLRF	POSTINC1, a	; xCopyPosition = queueSEND_TO_BACK
+	CLRF	POSTINC1, a
+	CLRF	POSTINC1, a	; xTicksToWait = semGIVE_BLOCK_TIME
+	CLRF	POSTINC1, a
+	CLRF	POSTINC1, a
+	CLRF	POSTINC1, a	; pvItemToQueue = NULL
+
+	; xQueue = xTransmitMutexHandle
+	MOVFF	_xTransmitMutexHandle, POSTINC1
+	MOVFF	_xTransmitMutexHandle + 1, POSTINC1
+	CALL	_xQueueGenericSend
+
+	; Pop( pxECANCurrentMsg->pvCallback )
+	MOVWF	POSTDEC1, w, a		; Discard
+	MOVFF	POSTDEC1, PCLATH
+	MOVWF	INDF1, w, a
 	CLRF	PCLATU, a
 	CALLW
 	RETURN

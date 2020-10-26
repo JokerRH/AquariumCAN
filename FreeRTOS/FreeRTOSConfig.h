@@ -88,6 +88,10 @@
 #define INCLUDE_xTaskGetHandle                  0
 #define INCLUDE_xTaskResumeFromISR              1
 
-#define configMINIMAL_STACK_SIZE                ( 24 + configTEMP_SIZE + ( configCHECK_FOR_STACK_OVERFLOW > 1 ? 16 : 0 ) )	//Absolut minimal stack size just to call the function. Each hardware stack entry (i.e. nested function call) requires an additional 2 bytes!
+#if configCHECK_FOR_STACK_OVERFLOW > 1
+#define configMINIMAL_STACK_SIZE                ( 24 + configTEMP_SIZE + 16 )	//Absolut minimal stack size just to call the function. Each hardware stack entry (i.e. nested function call) requires an additional 2 bytes!
+#else
+#define configMINIMAL_STACK_SIZE                ( 24 + configTEMP_SIZE )		//Absolut minimal stack size just to call the function. Each hardware stack entry (i.e. nested function call) requires an additional 2 bytes!
+#endif
 
 /* A header file that defines trace macro can be included here. */

@@ -35,3 +35,4 @@ __reentrant void ECAN_Initialize( void );
 void vECANTransmit( ListItem_t *pxLI );
 void vECANReceive( ListItem_t *pxLI );
 void vECANTransmitDelayed( ListItem_t *pxLI, TickType_t xTicksToWait );
+bool xECANAbortTransmit( ListItem_t *const pxLI );

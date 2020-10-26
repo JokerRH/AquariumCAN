@@ -172,6 +172,11 @@ LOOP_RESTORE:
 	; Restore critical nesting
 	MOVFF	POSTDEC1, _ucCriticalNesting
 
+	; Restore INTCON0
+	BANKSEL( _ucCriticalNesting )
+	TSTFSZ	BANKMASK( _ucCriticalNesting ), b
+	BCF	INTCON0, INTCON0_GIEH_POSN, a	; The current task yielded from within a critical section. Disable interrupts
+
 	; Restore temp registers
 	LFSR	2, btemp + configTEMP_SIZE - 1
 	REPT	configTEMP_SIZE
@@ -197,16 +202,12 @@ LOOP_RESTORE:
 	MOVFF	POSTDEC1, BSR
 	MOVFF	POSTDEC1, WREG
 	MOVFF	POSTDEC1, STATUS
-	
-	; Restore INTCON0
-	BANKSEL( _ucCriticalNesting )
-	TSTFSZ	BANKMASK( _ucCriticalNesting ), b
-	BCF	INTCON0, INTCON0_GIEH_POSN, a	; The current task yielded from within a critical section. Disable interrupts
+
 RETINS:
 	; Return swapping the shadow registers
 	RETFIE	; FSR shadow registers are broken!
 
-PSECT porttext4,local,class=CODE,reloc=2
+PSECT porttext3,local,class=CODE,reloc=2
 
 ;
 ; _xPortStartScheduler
@@ -221,7 +222,7 @@ _xPortStartScheduler:
 	GOTO $
 
 
-PSECT porttext5,local,class=CODE,reloc=2
+PSECT porttext4,local,class=CODE,reloc=2
 
 ;
 ; __reentrant StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t pxCode, void *pvParameters )
@@ -291,4 +292,29 @@ _pxPortInitialiseStack:
 	; Return the current top of stack
 	MOVFF	FSR2L, btemp		; low( pxTopOfStack )
 	MOVFF	FSR2H, btemp + 1	; high( pxTopOfStack )
+	RETURN
+
+PSECT porttext5,local,class=CODE,reloc=2
+
+;
+; _listGET_OWNER_OF_HEAD_ENTRY
+;
+GLOBAL _listGET_OWNER_OF_HEAD_ENTRY
+SIGNAT _listGET_OWNER_OF_HEAD_ENTRY, 0x00
+_listGET_OWNER_OF_HEAD_ENTRY:
+	; low( pxList )
+	; high( pxList )
+	; <- FSR1
+	MOVWF	POSTDEC1, w, a
+	MOVFF	POSTDEC1, FSR0H
+	MOVFF	INDF1, FSR0L	; FSR0 = pxList
+	ADDFSR	0, 5			; FSR0 = &( pxList->xListEnd.pxNext )
+
+	MOVWF	POSTINC0, w, a
+	MOVFF	INDF0, FSR0H
+	MOVWF	FSR0L, f, a		; FSR0 = pxList->xListEnd.pxNext
+	ADDFSR	0, 6			; FSR0 = &( pxList->xListEnd.pxNext->pvOwner )
+
+	MOVFF	POSTINC0, btemp
+	MOVFF	POSTINC0, btemp + 1
 	RETURN
