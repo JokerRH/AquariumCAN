@@ -390,7 +390,7 @@ bool xECANAbortTransmit( ListItem_t *const pxLI )
 	}
 }
 
-void __interrupt( irq( RXB1IF ), base( 8 ), low_priority ) prvECANReceiveISR( void )
+void __interrupt( irq( IRQ_RXB1IF ), base( 8 ), low_priority ) prvECANReceiveISR( void )
 {
 	ECANCONbits.EWIN = 0x10 + CANCONbits.FP;	//Set EWIN to map current FIFO buffer into access bank
 	PIE5bits.RXBnIE = 0;

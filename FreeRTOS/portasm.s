@@ -1,8 +1,12 @@
 #include <xc.inc>
 #include <FreeRTOSConfig.h>
 
-GLOBAL _prvSetupTimerInterrupt
-SIGNAT _prvSetupTimerInterrupt, 0x59
+; Options
+portTIMER_FOSC_SCALE	equ 4
+
+; Derived
+TI_COMP	equ ( ( configCPU_CLOCK_HZ / portTIMER_FOSC_SCALE ) / configTICK_RATE_HZ )
+
 GLOBAL _vTaskSwitchContext
 SIGNAT _vTaskSwitchContext, 0x59
 GLOBAL _xTaskIncrementTick
@@ -13,13 +17,13 @@ GLOBAL _ucCriticalNesting
 GLOBAL prvPortInitISR
 PSECT ivt0xA8,global,class=CODE,reloc=2,ovrld,optim=,abs
 ORG 0xA8	
-dw prvPortInitISR shr 2   ; Vector 0 : SWINT
+DW prvPortInitISR shr 2	; Vector 0 : SWINT
 
 PSECT ivt0x8,global,class=CODE,reloc=2,ovrld,optim=
 ORG 0	
-dw prvPortISR_SWINT shr 2   ; Vector 0 : SWINT
+DW prvPortISR_SWINT shr 2	; Vector 0 : SWINT
 ORG 70	
-dw prvPortISR_CCP1 shr 2   ; Vector 35 : CCP1
+DW prvPortISR_CCP1 shr 2	; Vector 35 : CCP1
 
 PSECT porttext1,global,class=CODE,reloc=4
 ;
@@ -215,11 +219,40 @@ PSECT porttext3,local,class=CODE,reloc=2
 GLOBAL _xPortStartScheduler
 SIGNAT _xPortStartScheduler, 0x59
 _xPortStartScheduler:
-	CALL _prvSetupTimerInterrupt
+	; Interrupts are disabled
+	; Timer 1
+	CLRF	TMR1H, a
+	CLRF	TMR1L, a
+	CLRF	T1GCON, a	; T1GE disabled; T1GTM disabled; T1GPOL low; T1GGO done; T1GSPM disabled
+	CLRF	T1GATE, a	; GSS T1G_pin
+	MOVLW	0x01
+	MOVWF	T1CLK, a	; CS FOSC/4
+
+	//CCPR 1
+	MOVLW	high( TI_COMP )
+	MOVWF	CCPR1H, a
+	MOVLW	low( TI_COMP )
+	MOVWF	CCPR1L, a
+	MOVLW	0x81
+	MOVWF	CCP1CON, a	; MODE Toggle_cleartmr; EN enabled; FMT right_aligned
+	BANKSEL( CCPTMRS0 )
+	BSF		CCPTMRS0, CCPTMRS0_C1TSEL_POSN, b	; Selecting Timer 1
+
+	; Interrupt management
 	BANKSEL( PIR0 )
-	BSF BANKMASK( PIR0 ), PIR0_SWIF_POSN, b
- 	BSF INTCON0, INTCON0_GIEH_POSN, a
-	GOTO $
+	BCF	IPR0, IPR0_SWIP_POSN, b		; Set SW interrupt to low priority
+	BCF	IPR4, IPR4_CCP1IP_POSN, b	; Set CCP1 interrupt to low priority
+	BSF	PIE0, PIE0_SWIE_POSN, b		; Enable SW interrupt
+	BSF	PIR4, PIR4_CCP1IF_POSN, b	; Clear the CCP1 interrupt flag (Tick interrupt)
+	BSF	PIE4, PIE4_CCP1IE_POSN, b	; Enable CCP1 interrupt (Tick interrupt)
+
+	; Enable timer 1. This starts the tick system
+	MOVLW	0x33
+	MOVWF	T1CON, a	; CKPS 1:8; NOT_SYNC synchronize; TMR1ON enabled; T1RD16 enabled
+
+	BSF BANKMASK( PIR0 ), PIR0_SWIF_POSN, b	; Request a yield
+	BSF INTCON0, INTCON0_GIEL_POSN, a		; Enable low priority interrupts
+ 	BSF INTCON0, INTCON0_GIEH_POSN, a		; Enable interrupts. Yield has higher priority than tick. Even if both are queued, the yield will be executed first.
 
 
 PSECT porttext4,local,class=CODE,reloc=2

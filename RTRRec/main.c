@@ -136,7 +136,7 @@ void TaskRxTest( void *pvParameters )
 void __interrupt( irq( ERRIF ), base( 8 ), low_priority ) prvCanErrorISR( void )
 {
 	PIR5bits.ERRIF = 0;
-    __delay_ms( 50 );
+	__delay_ms( 50 );
 }
 
 void __interrupt( irq( IRXIF ), base( 8 ), low_priority ) prvCanIRXErrorISR( void )

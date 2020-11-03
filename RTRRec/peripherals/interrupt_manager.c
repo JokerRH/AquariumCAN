@@ -22,8 +22,6 @@ __reentrant void INTERRUPT_Initialize( )
 
 	GIE = state;
 	// Assign peripheral interrupt priority vectors
-	IPR0bits.SWIP = 0;
-	IPR4bits.CCP1IP = 0;
 	IPR5bits.TXB2IP = 0;
 	IPR5bits.RXBnIP = 0;
 	IPR5bits.ERRIP = 0;
