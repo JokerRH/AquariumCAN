@@ -35,7 +35,7 @@ void TaskTxTest( void* pvParameters )
 		LATAbits.LATA4 = ucCount & 1;
 		LATAbits.LATA5 = ( ucCount >> 1 ) & 1;
 
-		vTaskDelay( 2 );
+		vTaskDelay( 500 / portTICK_PERIOD_MS );
 
 		if( ucCount == 0 )
 			ucCount = 4;
@@ -136,7 +136,6 @@ void TaskRxTest( void *pvParameters )
 void __interrupt( irq( ERRIF ), base( 8 ), low_priority ) prvCanErrorISR( void )
 {
 	PIR5bits.ERRIF = 0;
-	__delay_ms( 50 );
 }
 
 void __interrupt( irq( IRXIF ), base( 8 ), low_priority ) prvCanIRXErrorISR( void )

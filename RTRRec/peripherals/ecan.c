@@ -11,6 +11,15 @@
 
 #include "pin_manager.h"
 
+/*
+	Mutex order:
+		ReceiveMutex
+		DelayedMutex
+		TransmitMutex
+
+	Any function that can be called from within the receive callback _must_ expect the ReceiveMutex to be held!
+*/
+
 extern volatile TickType_t xTickCount;
 
 //Transmit variables
@@ -22,6 +31,10 @@ ecan_msg_t *pxECANCurrentMsg;
 
 static SemaphoreHandle_t xTransmitMutexHandle;
 static StaticSemaphore_t xTransmitMutexBuffer;
+#if configTASK_NOTIFICATION_ARRAY_ENTRIES == 1
+static SemaphoreHandle_t xTransmitEventHandle;
+static StaticSemaphore_t xTransmitEventBuffer;
+#endif
 
 static List_t xReadyMessagesList;										/*< Prioritised message list */
 
@@ -76,12 +89,15 @@ void prvECANTransmitTask( void *pvParameters )
 		while( listLIST_IS_EMPTY( &xReadyMessagesList ) ) 
 		{
 			//No message was in the ready lists, suspend until a new message is inserted.
-			//Use a critical section to ensure that no task tried to resume this one between releasing the mutex and suspension.
-			//xSemaphoreGiveFromISR does not yield
-			vTaskSuspendAll( );
+#if configTASK_NOTIFICATION_ARRAY_ENTRIES == 1
+			xSemaphoreTake( xTransmitEventHandle, 0 );	//This is cheaper than an additional (unnecessary) round in the loop
 			xSemaphoreGive( xTransmitMutexHandle );
-			vTaskSuspend( NULL );
-			(void) xTaskResumeAll( );	//vTaskSuspend will have set xYieldPending to true, so xTaskResumeAll will always yield. No need to check the return value.
+			xSemaphoreTake( xTransmitEventHandle, portMAX_DELAY );
+#else
+			xTaskNotifyStateClearIndexed( NULL, 1 );	//This is cheaper than an additional (unnecessary) round in the loop
+			xSemaphoreGive( xTransmitMutexHandle );
+			xTaskNotifyWaitIndexed( 1, 0, 0, NULL, portMAX_DELAY );
+#endif
 			xSemaphoreTake( xTransmitMutexHandle, portMAX_DELAY );
 
 			//Recheck the lists after resumption.
@@ -98,6 +114,12 @@ void prvECANTransmitTask( void *pvParameters )
 		//Load the message into a transmit buffer
 		//Since we know that a buffer is available TaskNofityTake will always return a valid buffer.
 		vTaskSuspendAll( );	//We need temporary access to the ECANCON window, suspend the receive task (and unfortunately all others) to prevent it from acessing it.
+		
+		INTCON0bits.GIEH = 0;
+		uint8_t ucPIE5 = PIE5;
+		PIE5bits.RXBnIE = 0;
+		INTCON0bits.GIEH = 1;
+		
 		static uint8_t ucECANCON;
 		ucECANCON = ECANCON;
 		ECANCON = (uint8_t) ulTaskNotifyTake( true, 0 );	//Set window. MDSEL bits are readonly, FIFOWM is irrelevant.
@@ -121,6 +143,8 @@ void prvECANTransmitTask( void *pvParameters )
 
 		RXB0CON |= 1 << _TXB0CON_TXREQ_POSN;	//Send message
 		ECANCON = ucECANCON;					//Restore ECANCON
+		if( ucPIE5 & _PIE5_RXBnIE_MASK )
+			PIE5bits.RXBnIE = 1;
 		(void) xTaskResumeAll( );				//Resume the receive task (and all others)
 
 		//Message has been loaded into a transmission buffer, remove from ready list, execute callback and adjust priority
@@ -143,7 +167,7 @@ void prvECANReceiveTask( void *pvParameters )
 	PIE5bits.RXBnIE = 1;
 	while( 1 )
 	{
-		ulTaskNotifyTake( true, portMAX_DELAY );	//Wait for message
+		xTaskNotifyWait( 0, 0, NULL, portMAX_DELAY );	//Wait for message
 		xSemaphoreTake( xReceiveMutexHandle, portMAX_DELAY );
 		pxECANCurrentRxLI = listGET_HEAD_ENTRY( &xReceiveList );
 		for( UBaseType_t ucCount = listCURRENT_LIST_LENGTH( &xReceiveList ); ucCount != 0; --ucCount )
@@ -173,12 +197,9 @@ void prvECANDelayedTask( void *pvParameters )
 		//As the tick increment function may run at any point during checking (potentially moving messages between the two lists), other operations on these lists might not work reliably!
 		if( listLIST_IS_EMPTY( &xDelayedMessageList1 ) && listLIST_IS_EMPTY( &xDelayedMessageList2 ) )
 		{
-			//Use critical section to atomically release the mutex and suspend the task
-			//xSemaphoreGiveFromISR does not yield
-			vTaskSuspendAll( );
+			xTaskNotifyStateClear( NULL );
 			xSemaphoreGive( xDelayedMutexHandle );
-			vTaskSuspend( NULL );
-			(void) xTaskResumeAll( );
+			xTaskNotifyWait( 0, 0, NULL, portMAX_DELAY );
 			continue;
 		}
 
@@ -244,7 +265,11 @@ DELAY:
 		xSemaphoreGive( xTransmitMutexHandle );
 
 		//Resume the message task
-		vTaskResume( xECANTransmitHandle );
+#if configTASK_NOTIFICATION_ARRAY_ENTRIES == 1
+		xSemaphoreGive( xTransmitEventHandle );
+#else
+		xTaskNotifyIndexed( xECANTransmitHandle, 1, 0, eNoAction );
+#endif
 	}
 }
 
@@ -262,9 +287,16 @@ void vECANTransmit( ListItem_t *pxLI )
 	xSemaphoreGive( xTransmitMutexHandle );
 
 	//Resume the message task
-	vTaskResume( xECANTransmitHandle );
+#if configTASK_NOTIFICATION_ARRAY_ENTRIES == 1
+	xSemaphoreGive( xTransmitEventHandle );
+#else
+	xTaskNotifyIndexed( xECANTransmitHandle, 1, 0, eNoAction );
+#endif
 }
 
+/*!
+	\warning This function must not be called from within the receive callback!
+*/
 void vECANReceive( ListItem_t *pxLI )
 {
 	listSET_LIST_ITEM_VALUE( pxLI, uxTaskPriorityGet( NULL ) );
@@ -311,7 +343,7 @@ void vECANTransmitDelayed( ListItem_t *const pxLI, const TickType_t xTicksToWait
 		{
 			xNextDelayedMessage = xTimeToTransmit;
 			if( !xTaskAbortDelay( xECANDelayedHandle ) )	//Update task delay
-				vTaskResume( xECANDelayedHandle );
+				xTaskNotify( xECANDelayedHandle, 0, eNoAction );
 		}
 	}
 
@@ -368,7 +400,7 @@ bool xECANAbortTransmit( ListItem_t *const pxLI )
 			xNextDelayedMessage = listGET_ITEM_VALUE_OF_HEAD_ENTRY( pxDelayedMessagesList );
 		(void) xTaskResumeAll( );
 		if( !xTaskAbortDelay( xECANDelayedHandle ) )
-			vTaskResume( xECANDelayedHandle );
+			xTaskNotify( xECANDelayedHandle, 0, eNoAction );
 
 		//Priority management
 		{
@@ -396,7 +428,7 @@ void __interrupt( irq( IRQ_RXB1IF ), base( 8 ), low_priority ) prvECANReceiveISR
 	PIE5bits.RXBnIE = 0;
 
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-	vTaskNotifyGiveFromISR( xECANReceiveHandle, &xHigherPriorityTaskWoken );
+	xTaskNotifyFromISR( xECANReceiveHandle, 0, eNoAction, &xHigherPriorityTaskWoken );
 	portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 }
 
@@ -416,6 +448,7 @@ void vECANSwitchDelayedLists( void )
 	pxOverflowDelayedMessagesList = pxTemp;
 }
 
+//#define CAN_SET_TX
 void ECAN_Initialize( void )
 {
 	CANCON = 0x80;
@@ -440,8 +473,11 @@ void ECAN_Initialize( void )
 	/**
 	Configure Generic Buffers to be Transmit or Receive
 	*/
-	//BSEL0 = 0x80;
+#ifdef CAN_SET_TX
+	BSEL0 = 0x80;
+#else
 	BSEL0 = 0x00;
+#endif
 	
 	/**	
 		Initialize Receive Masks
@@ -460,7 +496,9 @@ void ECAN_Initialize( void )
 	*/
 	RXFCON0 = 0x01;
 	RXFCON1 = 0x00;
-	//RXFBCON0 = 0x7;
+#ifdef CAN_SET_TX
+	RXFBCON0 = 0x7;
+#endif
 	
 	/**
 	Assign Filters to Masks
@@ -535,14 +573,17 @@ void ECAN_Initialize( void )
 	RXF14EIDL = 0x00;
 	RXF14SIDH = 0x00;
 	RXF14SIDL = 0x00;
-	//RXF15EIDH = 0x00;
-	//RXF15EIDL = 0x00;
-	//RXF15SIDH = 0x00;
-	//RXF15SIDL = 0x00;
+#ifdef CAN_SET_TX
+	RXF15EIDH = 0x00;
+	RXF15EIDL = 0x00;
+	RXF15SIDH = 0x00;
+	RXF15SIDL = 0x00;
+#else
 	RXF15EIDH = 0xFF;
 	RXF15EIDL = 0xFF;
 	RXF15SIDH = 0xFF;
 	RXF15SIDL = 0xE3;
+#endif
 
 	/**
 	Initialize CAN Timings
@@ -567,6 +608,9 @@ void ECAN_Initialize( void )
 
 	//Initialise transmitter
 	xTransmitMutexHandle = xSemaphoreCreateMutexStatic( &xTransmitMutexBuffer );
+#if configTASK_NOTIFICATION_ARRAY_ENTRIES == 1
+	xTransmitEventHandle = xSemaphoreCreateBinaryStatic( &xTransmitEventBuffer );
+#endif
 	configASSERT( xTransmitMutexHandle );
 	vListInitialise( &xReadyMessagesList );
 	xECANTransmitHandle = xTaskCreateStatic( prvECANTransmitTask, (const portCHAR*) "ECANTX", stackSIZE_CANTX, NULL, 0, xECANTransmitStack, &xECANTransmitBuffer );
@@ -596,5 +640,5 @@ void ECAN_Initialize( void )
 	TXB2CONbits.TXBIF = 1;
 
 	PIE5bits.ERRIE = 1;
-    PIE5bits.IRXIE = 1;
+	PIE5bits.IRXIE = 1;
 }
