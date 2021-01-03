@@ -21,11 +21,6 @@ __reentrant void INTERRUPT_Initialize( )
 	IVTLOCKbits.IVTLOCKED = 0x01; // lock IVT
 
 	GIE = state;
-	// Assign peripheral interrupt priority vectors
-	IPR5bits.TXB2IP = 0;
-	IPR5bits.RXBnIP = 0;
-	IPR5bits.ERRIP = 0;
-	IPR5bits.IRXIP = 0;
 }
 
 void __interrupt(irq(default),base(8)) Default_ISR()

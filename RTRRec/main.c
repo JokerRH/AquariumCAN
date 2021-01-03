@@ -7,6 +7,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "stack.h"
+#include "measure.h"
 #include <FreeRTOS/include/semphr.h>
 
 TaskHandle_t xHandleTest;
@@ -47,17 +48,7 @@ void TaskTxTest( void* pvParameters )
 }
 #endif
 
-#if 1
-static void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *passedInEIDH, uint8_t *passedInEIDL, uint8_t *passedInSIDH, uint8_t *passedInSIDL )
-{
-	*passedInEIDH = 0;
-	*passedInEIDL = 0;
-	tempPassedInID = tempPassedInID << 5;
-	*passedInSIDL = 0xFF & tempPassedInID;
-	tempPassedInID = tempPassedInID >> 8;
-	*passedInSIDH = 0xFF & tempPassedInID;
-}
-
+#if 0
 asm( "GLOBAL _TxCallback" );
 void TxCallback( void )
 {
@@ -133,16 +124,6 @@ void TaskRxTest( void *pvParameters )
 }
 #endif
 
-void __interrupt( irq( ERRIF ), base( 8 ), low_priority ) prvCanErrorISR( void )
-{
-	PIR5bits.ERRIF = 0;
-}
-
-void __interrupt( irq( IRXIF ), base( 8 ), low_priority ) prvCanIRXErrorISR( void )
-{
-	PIR5bits.IRXIF = 0;
-}
-
 extern StackType_t uxIdleTaskStack[ stackSIZE_IDLE ];
 void main( )
 {
@@ -196,8 +177,9 @@ void main( )
 	INTCON0bits.GIEL = 1;
 	INTCON0bits.GIEH = 1;
 
+	vMeasureInitialize( );
 	//xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
-	xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", stackSIZE_TEST, NULL, 2, xStackTest, &xBufferTest );
+	//xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", stackSIZE_TEST, NULL, 2, xStackTest, &xBufferTest );
 	vTaskStartScheduler( );
 	xTaskGenericNotifyFromISR( NULL, 0, 0, 0, NULL, NULL ); //Circumvent compiler bug on "warning" 1498 that removes code.
 	while( 1 );

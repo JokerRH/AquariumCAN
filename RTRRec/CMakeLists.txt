@@ -2,6 +2,8 @@ target_sources( RTRRec
 	PUBLIC
 		main.c
 		stack.h
+		measure.c
+		measure.h
 		../FreeRTOS/portasm.s
 )
 

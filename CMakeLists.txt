@@ -21,7 +21,7 @@ add_executable( RTRRec )
 add_subdirectory( FreeRTOS )
 add_subdirectory( RTRRec )
 
-add_custom_target( RTRRec_Flash "D:/Program Files (x86)/Microchip/MPLABX/v5.40/mplab_platform/mplab_ipe/ipecmd.exe" /P18F25K83 /M /TPPK3 /FRTRRec.hex
+add_custom_target( RTRRec_Flash "D:/Program Files/Microchip/MPLABX/v5.45/mplab_platform/mplab_ipe/ipecmd.exe" /P18F25K83 /M /TPPK3 /FRTRRec.hex
 	DEPENDS RTRRec
 	USES_TERMINAL
 )

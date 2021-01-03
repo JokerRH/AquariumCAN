@@ -69,10 +69,31 @@ ListItem_t *pxLI;	//Circumvent compiler bug (clears upper half of address)
 
 extern void prvAddCurrentTaskToDelayedList( TickType_t xTicksToWait, const BaseType_t xCanBlockIndefinitely );
 
+void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *passedInEIDH, uint8_t *passedInEIDL, uint8_t *passedInSIDH, uint8_t *passedInSIDL )
+{
+	*passedInEIDH = 0;
+	*passedInEIDL = 0;
+	tempPassedInID = tempPassedInID << 5;
+	*passedInSIDL = 0xFF & tempPassedInID;
+	tempPassedInID = tempPassedInID >> 8;
+	*passedInSIDH = 0xFF & tempPassedInID;
+}
+
 extern void prvECANTxCallback( void );
 asm( "GLOBAL _prvECANTransmitTask" );
 void prvECANTransmitTask( void *pvParameters )
 {
+	//Enable interrupts
+	TXBIEbits.TXB0IE = 1;
+	TXBIEbits.TXB1IE = 1;
+	TXBIEbits.TXB2IE = 1;
+
+	TXB0CONbits.TXBIF = 1;
+	TXB1CONbits.TXBIF = 1;
+	TXB2CONbits.TXBIF = 1;
+
+	IPR5bits.TXB2IP = 1;	//Set TXBn interrupt priority to high
+
 	while( 1 )
 	{
 		//Clear TX interrupt flag and enable TX interrupts
@@ -164,6 +185,7 @@ extern bool prvECANRxCallback( void );
 asm( "GLOBAL _prvECANReceiveTask" );
 void prvECANReceiveTask( void *pvParameters )
 {
+	IPR5bits.RXBnIP = 1;	//Set RXBn interrupt priority to high
 	PIE5bits.RXBnIE = 1;
 	while( 1 )
 	{
@@ -448,7 +470,7 @@ void vECANSwitchDelayedLists( void )
 	pxOverflowDelayedMessagesList = pxTemp;
 }
 
-//#define CAN_SET_TX
+#define CAN_SET_TX
 void ECAN_Initialize( void )
 {
 	CANCON = 0x80;
@@ -629,16 +651,4 @@ void ECAN_Initialize( void )
 	pxDelayedMessagesList = &xDelayedMessageList1;
 	pxOverflowDelayedMessagesList = &xDelayedMessageList2;
 	xECANDelayedHandle = xTaskCreateStatic( prvECANDelayedTask, (const portCHAR*) "ECANDEL", stackSIZE_CANDEL, NULL, 0, xECANDelayedStack, &xECANDelayedBuffer );
-
-	//Enable interrupts
-	TXBIEbits.TXB0IE = 1;
-	TXBIEbits.TXB1IE = 1;
-	TXBIEbits.TXB2IE = 1;
-
-	TXB0CONbits.TXBIF = 1;
-	TXB1CONbits.TXBIF = 1;
-	TXB2CONbits.TXBIF = 1;
-
-	PIE5bits.ERRIE = 1;
-	PIE5bits.IRXIE = 1;
 }

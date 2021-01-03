@@ -31,6 +31,7 @@ extern ListItem_t *pxECANCurrentTxLI;
 extern ecan_msg_t *pxECANCurrentMsg;
 extern ListItem_t *pxECANCurrentRxLI;
 
+void convertCANid2Reg( uint32_t tempPassedInID, uint8_t *passedInEIDH, uint8_t *passedInEIDL, uint8_t *passedInSIDH, uint8_t *passedInSIDL );
 __reentrant void ECAN_Initialize( void );
 void vECANTransmit( ListItem_t *pxLI );
 void vECANReceive( ListItem_t *pxLI );
