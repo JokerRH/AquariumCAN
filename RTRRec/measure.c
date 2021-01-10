@@ -1,3 +1,4 @@
+#include "measure.h"
 #include "FreeRTOS.h"
 #include "stack.h"
 #include "peripherals/ecan.h"
@@ -7,9 +8,18 @@ TaskHandle_t xHandleMessage;
 static StackType_t xStackMessage[ stackSIZE_MESSAGE ];
 static StaticTask_t xBufferMessage;
 
+TaskHandle_t xHandleBlink;
+static StackType_t xStackBlink[ stackSIZE_BLINK ];
+static StaticTask_t xBufferBlink;
+
+TaskHandle_t xHandleCalibrate;
+static StackType_t xStackCalibrate[ stackSIZE_CALIBRATE ];
+static StaticTask_t xBufferCalibrate;
+
 static ListItem_t xMeasureLI;
 static ecan_msg_t xMeasureMsg;
 
+static volatile uint8_t s_ucDelay = 0;
 uint16_t xMeasureM = 327;		// = 3 / 602 * 0x10000
 uint32_t xMeasureB = 1127611 + 128;	// = 5179 / 301 * 0x10000 [ + '0.5' in 8.8 FPN]
 
@@ -113,6 +123,7 @@ void vTaskMeasure( void *pvParameters )
 	sdout[ 8 ] = 0;
 	sdout[ 9 ] = '\n';
 
+	TickType_t xLastWakeTime = xTaskGetTickCount( );
 	while( 1 )
 	{
 		// Measure
@@ -141,6 +152,73 @@ void vTaskMeasure( void *pvParameters )
 		while( 0 == U1FIFObits.TXBE );
 
 		//vECANTransmit( &xMeasureLI );
+		
+		vTaskDelayUntil( &xLastWakeTime, measureDELAY_TICKS );
+	}
+}
+
+asm( "GLOBAL _vTaskBlink" );
+void vTaskBlink( void *pvParameters )
+{
+	TickType_t xLastWakeTime = xTaskGetTickCount( );
+	while( 1 )
+	{
+		LATAbits.LATA5 = 0;	//LED on
+		if( s_ucDelay <= 0xF7 )
+		{
+			vTaskDelayUntil( &xLastWakeTime, (TickType_t) s_ucDelay / portTICK_PERIOD_MS );
+			LATAbits.LATA5 = 1;	//LED off
+			vTaskDelayUntil( &xLastWakeTime, (TickType_t) 100 / portTICK_PERIOD_MS );
+		}
+	}
+}
+
+asm( "GLOBAL _vTaskCalibrate" );
+void vTaskCalibrate( void *pvParameters )
+{
+	//Set up button
+	//Timer 2
+	T2CON = 0x70;		// T2CKPS 1:128; T2OUTPS 1:1; TMR2ON off
+	T2CLKCON = 0x04;	// T2CS LFINTOSC
+	T2HLT = 0x12;		// T2PSYNC Not Synchronized; T2MODE Starts on falling edge on TMR2_ers; T2CKPOL Rising Edge; T2CKSYNC Not Synchronized
+	T2RST = 0x00;		// T2RSEL T2CKIPPS pin
+	T2PR = 0x0B;		// PR2 11
+	T2TMR = 0x00;		// Initialise TMR2 to 0
+	//T2INPPS = 0x01;		// RA1->TMR2:T2IN
+
+	//CLC 1
+	//CLCIN0PPS = 0x01;		// RA1->CLC1:CLCIN0
+	CLC1POL = 0x00;			// LC1G1POL not_inverted; LC1G2POL not_inverted; LC1G3POL not_inverted; LC1G4POL not_inverted; LC1POL not_inverted
+	CLC1SEL0 = 0x0E;		// LC1D1S TMR2_OUT
+	CLC1SEL1 = 0x00;		// LC1D2S CLCIN0 (CLCIN0PPS)
+	CLC1SEL2 = 0x00;		// LC1D3S CLCIN0 (CLCIN0PPS)
+	CLC1SEL3 = 0x16;		// LC1D4S CCP2_OUT
+	CLC1GLS0 = 0x02;		// LC1G1D3N disabled; LC1G1D2N disabled; LC1G1D4N disabled; LC1G1D1T enabled; LC1G1D3T disabled; LC1G1D2T disabled; LC1G1D4T disabled; LC1G1D1N disabled
+	CLC1GLS1 = 0x04;		// LC1G2D2N enabled; LC1G2D1N disabled; LC1G2D4N disabled; LC1G2D3N disabled; LC1G2D2T disabled; LC1G2D1T disabled; LC1G2D4T disabled; LC1G2D3T disabled
+	CLC1GLS2 = 0x88;		// LC1G3D1N disabled; LC1G3D2N disabled; LC1G3D3N disabled; LC1G3D4N disabled; LC1G3D1T disabled; LC1G3D2T enabled; LC1G3D3T disabled; LC1G3D4T enabled
+	CLC1GLS3 = 0x00;		// LC1G4D1N disabled; LC1G4D2N disabled; LC1G4D3N disabled; LC1G4D4N disabled; LC1G4D1T disabled; LC1G4D2T disabled; LC1G4D3T disabled; LC1G4D4T disabled
+	CLC1CON = 0x8C;			// LC1EN enabled; INTN enabled; INTP disabled; MODE 1-input D flip-flop with S and R
+
+	//SMT 1
+	SMT1CON0 = 0x80;			// WPOL high/rising edge enabled; SMT1STP rolls over to 24'h000000; SMT1SPOL high/rising edge enabled; SMT1EN enabled; SMT1PS 1:1 Prescaler; SMT1CPOL rising edge;
+	SMT1CON1 = 0x43;			// SMT1REPEAT Repeat Data Acquisition; SMT1MODE High and Low time; SMT1GO disabled;
+	SMT1STAT = 0x00;			// SMT1CPWUP SMT1CPW1 update complete; SMT1CPRUP SMT1PR1 update complete; SMT1RST SMT1TMR1 update complete;
+	SMT1CLK = 0x03;				// SMT1CSEL LFINTOSC;
+	SMT1WIN = 0x00;				// SMT1WSEL SMT1WINPPS;
+	SMT1SIG = 0x16;				// SMT1SSEL CLC1OUT;
+	SMT1PRU = 0xFF;				// SMT1PR 0;
+	SMT1PRH = 0xFF;				// SMT1PR 0;
+	SMT1PRL = 0xFF;				// SMT1PR 0;
+	PIR1bits.SMT1PWAIF = 0;		// Clear the SMT1 pulse width acquisition interrupt flag
+	//IPR1bits.SMT1PWAIP = 0;	// Set SMT1 pulse width acquisition interrupt to low priority (default)
+	PIE1bits.SMT1PWAIE = 1;		// Enable the SMT1 pulse width acquisition interrupt
+	SMT1CON1bits.SMT1GO = 1;	// Start the SMT module by writing to SMTxGO bit
+
+	T2CONbits.ON = 1;	//Enable timer 2
+
+	while( 1 )
+	{
+		vTaskSuspend( NULL );
 	}
 }
 
@@ -150,7 +228,28 @@ void __interrupt( irq( IRQ_ADT ), base( 8 ), high_priority ) prvADCThresholdISR(
 	PIR1bits.ADTIF = 0;		// Clear the ADCC Threshold interrupt flag
 }
 
+void __interrupt( irq( IRQ_SMT1PWA ), base( 8 ), high_priority ) prvSwitchISR( void )
+{
+	PIR1bits.SMT1PWAIF = 0;
+
+	if( SMT1CPW >= 0xFFFF )
+	{
+		//Longpress
+		vTaskResume( xHandleBlink );
+	}
+	else
+	{
+		//Shortpress
+		s_ucDelay += 8;
+	}
+}
+
 void vMeasureInitialize( void )
 {
-	xHandleMessage = xTaskCreateStatic( vTaskMeasure, (const portCHAR*) "Measure", stackSIZE_MESSAGE, NULL, 3, xStackMessage, &xBufferMessage );
+	xHandleMessage = xTaskCreateStatic( vTaskMeasure, (const portCHAR*) "Measure", stackSIZE_MESSAGE, NULL, messagePRIORITY_MESSAGE, xStackMessage, &xBufferMessage );
+	vTaskSuspendAll( );
+	xHandleBlink = xTaskCreateStatic( vTaskBlink, (const portCHAR*) "Blink", stackSIZE_BLINK, NULL, messagePRIORITY_BLINK, xStackBlink, &xBufferBlink );
+	vTaskSuspend( xHandleBlink );
+	(void) xTaskResumeAll( );
+	xHandleCalibrate = xTaskCreateStatic( vTaskCalibrate, (const portCHAR*) "Calibrate", stackSIZE_CALIBRATE, NULL, messagePRIORITY_CALIBRATE, xStackCalibrate, &xBufferCalibrate );
 }
