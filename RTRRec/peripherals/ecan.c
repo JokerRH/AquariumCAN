@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include "ecan.h"
 #include "../stack.h"
+#include "../priority.h"
 
 #include "FreeRTOS.h"
 #include "FreeRTOS/include/queue.h"
@@ -635,13 +636,13 @@ void ECAN_Initialize( void )
 #endif
 	configASSERT( xTransmitMutexHandle );
 	vListInitialise( &xReadyMessagesList );
-	xECANTransmitHandle = xTaskCreateStatic( prvECANTransmitTask, (const portCHAR*) "ECANTX", stackSIZE_CANTX, NULL, 0, xECANTransmitStack, &xECANTransmitBuffer );
+	xECANTransmitHandle = xTaskCreateStatic( prvECANTransmitTask, (const portCHAR*) "ECANTX", stackSIZE_CANTX, NULL, ecanPRIORITY_TRANSMIT, xECANTransmitStack, &xECANTransmitBuffer );
 	
 	//Initialise receiver
 	xReceiveMutexHandle = xSemaphoreCreateMutexStatic( &xReceiveMutexBuffer );
 	configASSERT( xReceiveMutexHandle );
 	vListInitialise( &xReceiveList );
-	xECANReceiveHandle = xTaskCreateStatic( prvECANReceiveTask, (const portCHAR*) "ECANRX", stackSIZE_CANRX, NULL, 0, xECANReceiveStack, &xECANReceiveBuffer );
+	xECANReceiveHandle = xTaskCreateStatic( prvECANReceiveTask, (const portCHAR*) "ECANRX", stackSIZE_CANRX, NULL, ecanPRIORITY_RECEIVE, xECANReceiveStack, &xECANReceiveBuffer );
 
 	//Initialise delay task
 	xDelayedMutexHandle = xSemaphoreCreateMutexStatic( &xDelayedMutexBuffer );
@@ -650,5 +651,5 @@ void ECAN_Initialize( void )
 	vListInitialise( &xDelayedMessageList2 );
 	pxDelayedMessagesList = &xDelayedMessageList1;
 	pxOverflowDelayedMessagesList = &xDelayedMessageList2;
-	xECANDelayedHandle = xTaskCreateStatic( prvECANDelayedTask, (const portCHAR*) "ECANDEL", stackSIZE_CANDEL, NULL, 0, xECANDelayedStack, &xECANDelayedBuffer );
+	xECANDelayedHandle = xTaskCreateStatic( prvECANDelayedTask, (const portCHAR*) "ECANDEL", stackSIZE_CANDEL, NULL, ecanPRIORITY_DELAY, xECANDelayedStack, &xECANDelayedBuffer );
 }

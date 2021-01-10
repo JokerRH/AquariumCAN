@@ -1,16 +1,13 @@
 #include "measure.h"
 #include "FreeRTOS.h"
 #include "stack.h"
+#include "priority.h"
 #include "peripherals/ecan.h"
 #include <FreeRTOS/include/task.h>
 
 TaskHandle_t xHandleMessage;
 static StackType_t xStackMessage[ stackSIZE_MESSAGE ];
 static StaticTask_t xBufferMessage;
-
-TaskHandle_t xHandleBlink;
-static StackType_t xStackBlink[ stackSIZE_BLINK ];
-static StaticTask_t xBufferBlink;
 
 TaskHandle_t xHandleCalibrate;
 static StackType_t xStackCalibrate[ stackSIZE_CALIBRATE ];
@@ -19,7 +16,7 @@ static StaticTask_t xBufferCalibrate;
 static ListItem_t xMeasureLI;
 static ecan_msg_t xMeasureMsg;
 
-static volatile uint8_t s_ucDelay = 0;
+static volatile uint16_t s_wDutyCycle = 0;	//10 bit duty cycle, left aligned (i.e. shifted left 6 bit)
 uint16_t xMeasureM = 327;		// = 3 / 602 * 0x10000
 uint32_t xMeasureB = 1127611 + 128;	// = 5179 / 301 * 0x10000 [ + '0.5' in 8.8 FPN]
 
@@ -126,6 +123,10 @@ void vTaskMeasure( void *pvParameters )
 	TickType_t xLastWakeTime = xTaskGetTickCount( );
 	while( 1 )
 	{
+		//Enable ADC charge pump
+		//ADCPbits.CPON = 1;
+		//while( ADCPbits.CPRDY == 0 );	//Wait for charge pump to initialize
+	
 		// Measure
 		INTCON0bits.GIEL = 0;	//Disable low priority interrupts
 		ADCON0bits.GO = 1;
@@ -154,22 +155,6 @@ void vTaskMeasure( void *pvParameters )
 		//vECANTransmit( &xMeasureLI );
 		
 		vTaskDelayUntil( &xLastWakeTime, measureDELAY_TICKS );
-	}
-}
-
-asm( "GLOBAL _vTaskBlink" );
-void vTaskBlink( void *pvParameters )
-{
-	TickType_t xLastWakeTime = xTaskGetTickCount( );
-	while( 1 )
-	{
-		LATAbits.LATA5 = 0;	//LED on
-		if( s_ucDelay <= 0xF7 )
-		{
-			vTaskDelayUntil( &xLastWakeTime, (TickType_t) s_ucDelay / portTICK_PERIOD_MS );
-			LATAbits.LATA5 = 1;	//LED off
-			vTaskDelayUntil( &xLastWakeTime, (TickType_t) 100 / portTICK_PERIOD_MS );
-		}
 	}
 }
 
@@ -215,6 +200,21 @@ void vTaskCalibrate( void *pvParameters )
 	SMT1CON1bits.SMT1GO = 1;	// Start the SMT module by writing to SMTxGO bit
 
 	T2CONbits.ON = 1;	//Enable timer 2
+	
+	//Set up PWM
+	//Timer 4
+	T4CLKCON = 0x01;	// T4CS FOSC/4; 
+	T4HLT = 0x00;		// T4PSYNC Not Synchronized; T4MODE Software control; T4CKPOL Rising Edge; T4CKSYNC Not Synchronized;
+	T4RST = 0x00;		// T4RSEL T4CKIPPS pin;
+	T4PR = 0xFF;		// PR4 255;
+	T4TMR = 0x00;		// TMR4 0;
+	T4CON = 0x80;		// T4CKPS 1:1; T4OUTPS 1:1; TMR4ON on;
+
+	//PWM 5
+	PWM5CON = 0x90;				// PWM5POL active_lo; PWM5EN enabled;
+	PWM5DCH = 0x00;				// DC 127;
+	PWM5DCL = 0x00;				// DC 3;
+	CCPTMRS1bits.P5TSEL = 2;	// Select timer
 
 	while( 1 )
 	{
@@ -235,21 +235,20 @@ void __interrupt( irq( IRQ_SMT1PWA ), base( 8 ), high_priority ) prvSwitchISR( v
 	if( SMT1CPW >= 0xFFFF )
 	{
 		//Longpress
-		vTaskResume( xHandleBlink );
+		s_wDutyCycle = 0;
 	}
 	else
 	{
 		//Shortpress
-		s_ucDelay += 8;
+		s_wDutyCycle += 32 << 6;
 	}
+	
+	PWM5DCH = ( s_wDutyCycle >> 8 ) & 0xFF;
+	PWM5DCL = s_wDutyCycle & 0xFF;
 }
 
 void vMeasureInitialize( void )
 {
 	xHandleMessage = xTaskCreateStatic( vTaskMeasure, (const portCHAR*) "Measure", stackSIZE_MESSAGE, NULL, messagePRIORITY_MESSAGE, xStackMessage, &xBufferMessage );
-	vTaskSuspendAll( );
-	xHandleBlink = xTaskCreateStatic( vTaskBlink, (const portCHAR*) "Blink", stackSIZE_BLINK, NULL, messagePRIORITY_BLINK, xStackBlink, &xBufferBlink );
-	vTaskSuspend( xHandleBlink );
-	(void) xTaskResumeAll( );
 	xHandleCalibrate = xTaskCreateStatic( vTaskCalibrate, (const portCHAR*) "Calibrate", stackSIZE_CALIBRATE, NULL, messagePRIORITY_CALIBRATE, xStackCalibrate, &xBufferCalibrate );
 }
