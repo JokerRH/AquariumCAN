@@ -68,6 +68,7 @@ typedef unsigned char UBaseType_t;
 #define portGLOBAL_INT_ENABLE_BIT	_INTCON0_GIEH_MASK
 #define portSTACK_GROWTH			1
 #define portTICK_PERIOD_MS			( ( TickType_t ) 1000 / configTICK_RATE_HZ )
+#define portMS_TO_TICK( ms )		( ms / portTICK_PERIOD_MS )
 /*-----------------------------------------------------------*/
     
 /* Critical section management. */
