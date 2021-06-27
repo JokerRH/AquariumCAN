@@ -8,6 +8,7 @@
 #include "task.h"
 #include "stack.h"
 #include "measure.h"
+#include "log.h"
 #include <FreeRTOS/include/semphr.h>
 
 TaskHandle_t xHandleTest;
@@ -173,6 +174,7 @@ void main( )
 	IO_RA4_SetLow( );
 	IO_RA5_SetLow( );
 
+	LOG_INIT;
 	ECAN_Initialize( );
 	INTCON0bits.GIEL = 1;
 	INTCON0bits.GIEH = 1;
@@ -180,6 +182,7 @@ void main( )
 	vMeasureInitialize( );
 	//xHandleTest = xTaskCreateStatic( TaskTxTest, (const portCHAR*) "TXTest", stackSIZE_TEST, NULL, 3, xStackTest, &xBufferTest );
 	//xHandleTest = xTaskCreateStatic( TaskRxTest, (const portCHAR*) "RXTest", stackSIZE_TEST, NULL, 2, xStackTest, &xBufferTest );
+	LOG( 'S', 'c', 'h', 'e', 'd', '.', ' ', 'g', 'o' );
 	vTaskStartScheduler( );
 	xTaskGenericNotifyFromISR( NULL, 0, 0, 0, NULL, NULL ); //Circumvent compiler bug on "warning" 1498 that removes code.
 	while( 1 );
