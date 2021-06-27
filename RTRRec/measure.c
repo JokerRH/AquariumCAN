@@ -96,7 +96,7 @@ void vTaskMeasure( void *pvParameters )
 
 		//vECANTransmit( &xMeasureLI );
 		
-		vTaskDelayUntil( &xLastWakeTime, measureDELAY_TICKS );
+		vTaskDelay( measureDELAY_TICKS );
 	}
 }
 
