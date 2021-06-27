@@ -2,16 +2,22 @@
 #include "FreeRTOS.h"
 #include "stack.h"
 #include "priority.h"
+#include "exception.h"
 #include "peripherals/ecan.h"
+#include "peripherals/pin_manager.h"
+#include "log.h"
 #include <FreeRTOS/include/task.h>
 #include <FreeRTOS/include/semphr.h>
 #include <pic18f25k83.h>
 
 #define measureEVENT_BUTTON_LONGPRESS	( 1 << 0 )
 #define measureEVENT_ADC_READY			( 1 << 1 )
-//#define measureEVENT_BUTTON_SHORTPRESS	( 1 << 1 )
+#define measureEVENT_BUTTON_SHORTPRESS	( 1 << 2 )
 
-#define measureCALIBRATE_TIMEOUT		portMS_TO_TICK( 240000 )
+#define measureLED_BLIP					portMS_TO_TICK( 500 )
+#define measureLED_BLINK				portMS_TO_TICK( 1000 )
+#define measureBLINK_TOGGLES			240
+#define measureCALIBRATE_TIMEOUT		( measureBLINK_TOGGLES * measureLED_BLINK )
 
 #define measureADACQ_DERIV	0x1FFF
 #define measureADACQ		0x0006	// (10.2us) => 93°C (10.18us)
@@ -34,55 +40,10 @@ uint32_t xMeasureB = 1127611 + 128;	// = 5179 / 301 * 0x10000 [ + '0.5' in 8.8 F
 static SemaphoreHandle_t xHandleProbeMutex;
 static StaticSemaphore_t xBufferProbeMutex;
 
-static uint8_t sdout[ 10 ];
-
 asm( "GLOBAL _prvMsgCallback" );
 static void prvMsgCallback( void )
 {
 
-}
-
-static void vUARTInitialize( void )
-{
-	//UART 1
-	U1P1L = 0x00;	// P1L 0; 
-	U1P1H = 0x00;	// P1H 0; 
-	U1P2L = 0x00;	// P2L 0; 
-	U1P2H = 0x00;	// P2H 0; 
-	U1P3L = 0x00;	// P3L 0; 
-	U1P3H = 0x00;	// P3H 0; 
-	U1CON0 = 0xA0;	// BRGS high speed; MODE Asynchronous 8-bit mode; RXEN disabled; TXEN enabled; ABDEN disabled; 
-	U1CON1 = 0x80;	// RXBIMD Set RXBKIF on rising RX input; BRKOVR disabled; WUE disabled; SENDB disabled; ON enabled; 
-	U1CON2 = 0x00;	// TXPOL not inverted; FLO off; C0EN Checksum Mode 0; RXPOL not inverted; RUNOVF RX input shifter stops all activity; STP Transmit 1Stop bit, receiver verifies first Stop bit; 
-	U1BRGL = 0xA0;	// BRGL 160; 
-	U1BRGH = 0x01;	// BRGH 1; 
-	U1FIFO = 0x00;	// STPMD in middle of first Stop bit; TXWRE No error; 
-	U1UIR = 0x00;	// ABDIF Auto-baud not enabled or not complete; WUIF WUE not enabled by software; ABDIE disabled; 
-	U1ERRIR = 0x00;	// ABDOVF Not overflowed; TXCIF 0; RXBKIF No Break detected; RXFOIF not overflowed; CERIF No Checksum error; 
-	U1ERRIE = 0x00;	// TXCIE disabled; FERIE disabled; TXMTIE disabled; ABDOVE disabled; CERIE disabled; RXFOIE disabled; PERIE disabled; RXBKIE disabled; 
-	
-	//DMA 1
-	DMA1SSA = (uint24_t) &sdout;	//Source Address : sdout
-	DMA1DSA = (uint16_t) &U1TXB;	//Destination Address : &U1TXB
-	DMA1CON1 = 0x03;	//DMODE unchanged; DSTP not cleared; SMR GPR; SMODE incremented; SSTP cleared; 
-	DMA1SSZ = 10;		//Source Message Size : 10
-	DMA1DSZ = 1;		//Destination Message Size : 1
-	DMA1SIRQ = 0x1C;	//Start Trigger : SIRQ U1TX; 
-	DMA1AIRQ = 0x00;	//Abort Trigger : AIRQ None; 
-	DMA1CON0 = 0xC0;	//EN enabled; SIRQEN enabled; DGO not in progress; AIRQEN disabled; 
-
-	//Change priorities
-	PRLOCK = 0x55;
-	PRLOCK = 0xAA;
-	PRLOCKbits.PRLOCKED = 0;
-	
-	DMA1PR = 0;
-	ISRPR = 1;
-	MAINPR = 2;
-	
-	PRLOCK = 0x55;
-	PRLOCK = 0xAA;
-	PRLOCKbits.PRLOCKED = 1;
 }
 
 asm( "GLOBAL _vTaskMeasure" );
@@ -93,18 +54,6 @@ void vTaskMeasure( void *pvParameters )
 	vListInitialiseItem( &xMeasureLI );
 	listSET_LIST_ITEM_OWNER( &xMeasureLI, &xMeasureMsg );
 	convertCANid2Reg( 0x117, &xMeasureMsg.ucEIDH, &xMeasureMsg.ucEIDL, &xMeasureMsg.ucSIDH, &xMeasureMsg.ucSIDL );
-
-	vUARTInitialize( );
-	sdout[ 0 ] = 0xAA;
-	sdout[ 1 ] = 0;
-	sdout[ 2 ] = 0;
-	sdout[ 3 ] = 0xBB;
-	sdout[ 4 ] = 0;
-	sdout[ 5 ] = 0;
-	sdout[ 6 ] = 0xCC;
-	sdout[ 7 ] = 0;
-	sdout[ 8 ] = 0;
-	sdout[ 9 ] = '\n';
 
 	TickType_t xLastWakeTime = xTaskGetTickCount( );
 	
@@ -139,57 +88,16 @@ void vTaskMeasure( void *pvParameters )
 		uint16_t wRes = ( xMeasureB - (uint32_t) wADFLTR * xMeasureM ) >> 8;	//8.8 FPN
 		uint16_t wMilliV = (uint16_t) ( (uint32_t) wADFLTR * 49000 / 163840 );
 
-#if 0
-		sdout[ 1 ] = wRes >> 8;
-		sdout[ 2 ] = wRes & 0xFF;
-		sdout[ 4 ] = wMilliV >> 8;
-		sdout[ 5 ] = wMilliV & 0xFF;
-
-		DMA1CON0bits.SIRQEN = 1;
-		while( DMA1CON0bits.SIRQEN );
-		while( 0 == U1FIFObits.TXBE );
-#endif
+		LOG( 'M', 'm', 't', ' ',
+			( wRes >> 8 ) &0xFF, wRes & 0xFF,
+			';',
+			( wMilliV >> 8 ) &0xFF, wMilliV & 0xFF
+		);
 
 		//vECANTransmit( &xMeasureLI );
 		
 		vTaskDelayUntil( &xLastWakeTime, measureDELAY_TICKS );
 	}
-}
-
-/*!
-	\brief		Allows a user to take a measurement using a short button press
-	\returns	true if a timeout occured, false if a measurement is available in ADFLTR
-	\warning	xHandleProbeMutex must be taken before calling this function!
-	\details	Continuously measures the current change in AD value, allowing prvADCThresholdISR to display it to the user. Upon short press an accurate measurement is taken and left available.
- */
-static bool prvTakeUserMeasurement( void )
-{
-	(void) xTaskNotifyStateClear( NULL );
-	
-	//Enable continuous measurement to indicate stability
-	ADACQ = measureADACQ_DERIV;
-	T4CONbits.ON = 1;	//Enable indicator
-	ADCON0bits.GO = 1;
-
-	//Allow the user to wait for the electrode to settle
-	//A short button press actually causes the Switch IRQ to disable the indicator.
-	//The ADT IRQ will then stop re-enabling measurements and send the measureEVENT_ADC_READY event.
-	//This must be used as disabling the GO bit in software requires a delay of unknown length before being reactivated again.
-	//This in turn caused a bug that the precise measurement would block indefinetely.
-	uint32_t uxEvent;
-	(void) xTaskNotifyWait( measureEVENT_ADC_READY, measureEVENT_ADC_READY, &uxEvent, measureCALIBRATE_TIMEOUT );
-
-	//If timeout is reached uxEvent won't have the shortpress event set
-	if( 0 == ( uxEvent & measureEVENT_ADC_READY ) )
-		return true;	//Timeout
-
-	//Do an accurate measurement
-	ADACQ = measureADACQ;
-	INTCON0bits.GIEL = 0;	//Disable low priority interrupts
-	asm( "BSF ADCON0, 0" );	//Enable ADC
-	asm( "SLEEP" );
-	while( 0 == INTCON0bits.GIEL );		//Ensure the interrupt has run!
-	return false;
 }
 
 asm( "GLOBAL _vTaskCalibrate" );
@@ -254,39 +162,123 @@ void vTaskCalibrate( void *pvParameters )
 	while( 1 )
 	{
 		//Wait for longpress
+#define MASK	( measureEVENT_ADC_READY | measureEVENT_BUTTON_LONGPRESS | measureEVENT_BUTTON_SHORTPRESS )
 		do
 		{
-			(void) xTaskNotifyWait( measureEVENT_BUTTON_LONGPRESS, measureEVENT_BUTTON_LONGPRESS, &uxEvent, portMAX_DELAY );
+			(void) xTaskNotifyWait( MASK, MASK, &uxEvent, portMAX_DELAY );
 		} while( 0 == ( uxEvent & measureEVENT_BUTTON_LONGPRESS ) );
 		(void) xSemaphoreTake( xHandleProbeMutex, portMAX_DELAY );
+#undef MASK
+		
+		LOG( 'C', 'a', 'l', ' ', 's', 't', 'a', 'r', 't' );
 		
 		//Enable ADC charge pump
 		ADCPbits.CPON = 1;
 		while( 0 == ADCPbits.CPRDY );	//Wait for charge pump to initialize
 
-		if( prvTakeUserMeasurement( ) )
-			goto CALIBRATE_IDLE;	//Timeout, continue with old configuration
+		asm( "CALL CALIBRATE_TAKE_MEASUREMENT" );
 		const uint16_t wADFLTR1 = ADFLTR;	//Save result
-		
-		if( prvTakeUserMeasurement( ) )
-			goto CALIBRATE_IDLE;	//Timeout, continue with old configuration
+
+		IO_RA5_SetLow( );
+		vTaskDelay( measureLED_BLIP );
+		IO_RA5_SetHigh( );
+
+		asm( "CALL CALIBRATE_TAKE_MEASUREMENT" );
 		const uint16_t wADFLTR2 = ADFLTR;	//Save result
 		
-		ADCPbits.CPON = 0;
-		(void) xSemaphoreGive( xHandleProbeMutex );
+		ADCPbits.CPON = 0;	//Disable ADC charge pump
 		
-		sdout[ 1 ] = ( wADFLTR1 >> 8 ) & 0xFF;
-		sdout[ 2 ] = wADFLTR1 & 0xFF;
-		sdout[ 4 ] = ( wADFLTR2 >> 8 ) & 0xFF;
-		sdout[ 5 ] = wADFLTR2 & 0xFF;
+		//Calculate new calibration value
+		
+		//Wait for user to acknowledge correct probe position
+		{
+			uint8_t u = measureBLINK_TOGGLES;
+			for( ; u != 0; --u )
+			{
+				IO_RA5_Toggle( );
+#define MASK	( measureEVENT_BUTTON_SHORTPRESS | measureEVENT_BUTTON_LONGPRESS )
+				while( xTaskNotifyWait( MASK, MASK, &uxEvent, measureLED_BLINK ) )
+					if( uxEvent & MASK )
+					{
+						IO_RA5_SetHigh( );
+						if( uxEvent & measureEVENT_BUTTON_LONGPRESS )
+							goto CALIBRATE_CANCEL;
+						goto CALIBRATE_FINISH;
+					}
+#undef MASK
+			}
+			//Timeout
+			goto CALIBRATE_TIMEOUT;
+		}
+		
+CALIBRATE_FINISH:
+		if( !xSemaphoreGive( xHandleProbeMutex ) )
+			goto CALIBRATE_TAKE_MEASUREMENT;
+		
+		LOG(
+				'C', 'a', 'l', ' ',
+				( wADFLTR1 >> 8 ) & 0xFF, wADFLTR1 & 0xFF,
+				';',
+				( wADFLTR2 >> 8 ) & 0xFF, wADFLTR2 & 0xFF
+		);
 
-		DMA1CON0bits.SIRQEN = 1;
-		while( DMA1CON0bits.SIRQEN );
-		while( 0 == U1FIFObits.TXBE );
 		continue;
 		
-CALIBRATE_IDLE:
+		//================
+		//Take measurement
+		//================#
+CALIBRATE_TAKE_MEASUREMENT:
+		asm( "CALIBRATE_TAKE_MEASUREMENT:" );
+		//Enable continuous measurement to indicate stability
+		ADACQ = measureADACQ_DERIV;
+		RA5PPS = 0x0D;		//Configure RA5 as PWM output (RA5->PWM5:PWM5)
+		T4CONbits.ON = 1;	//Enable indicator
+		ADCON0bits.GO = 1;
+
+		//Allow the user to wait for the electrode to settle
+		//A short button press actually causes the Switch IRQ to disable the indicator.
+		//The ADT IRQ will then stop re-enabling measurements and send the measureEVENT_ADC_READY event.
+		//This must be used as disabling the GO bit in software requires a delay of unknown length before being reactivated again.
+		//This in turn caused a bug that the precise measurement would block indefinitely.
+		uint32_t uxEvent;
+#define MASK	( measureEVENT_ADC_READY | measureEVENT_BUTTON_LONGPRESS | measureEVENT_BUTTON_SHORTPRESS )
+		//Bits are only cleared on entry if no notification is pending!
+		while( xTaskNotifyWait( MASK, MASK, &uxEvent, measureCALIBRATE_TIMEOUT ) )
+		{
+			if( uxEvent & measureEVENT_BUTTON_LONGPRESS )
+			{
+				//The user cancelled the measurement, the probe is assumed to be reinstalled properly.
+				//Pop the return address, as this "TakeMeasurement function" will not return.
+				asm( "POP" );
+				goto CALIBRATE_CANCEL;
+			}
+			else if( uxEvent & measureEVENT_ADC_READY )
+				goto CALIBRATE_MEASURE;	//The ADC_READY event will always occur after the BUTTON_SHORTPRESS event. Therefore, the latter will be cleared before continuing.
+		}
+#undef MASK
+		//At this point the loop was interrupted due to a timeout.
+		asm( "POP" );
+		goto CALIBRATE_TIMEOUT;
+
+CALIBRATE_MEASURE:
+		RA5PPS = 0x00;	//Reset RA5 to output
+
+		//Do an accurate measurement
+		ADACQ = measureADACQ;
+		INTCON0bits.GIEL = 0;	//Disable low priority interrupts
+		asm( "BSF ADCON0, 0" );	//Enable ADC
+		asm( "SLEEP" );
+		while( 0 == INTCON0bits.GIEL );		//Ensure the interrupt has run!
+		asm( "RETURN" );
+		
+CALIBRATE_TIMEOUT:
+		LOG( 'C', 'a', 'l', ' ', 't', '-', 'o', 'u', 't' );
+		SetException( exceptionINVALID_CALIBRATION );
+		
+CALIBRATE_CANCEL:
+		LOG( 'C', 'a', 'l', ' ', 'c', 'a', 'n', 'c', 'l' );
 		ADCPbits.CPON = 0;
+		RA5PPS = 0x00;	//Reset RA5 to output
 		(void) xSemaphoreGive( xHandleProbeMutex );
 	}
 }
@@ -299,7 +291,7 @@ void __interrupt( irq( IRQ_ADT ), base( 8 ), high_priority ) prvADCThresholdISR(
 	//If the PWM timer is enabled, display current AD value
 	if( T4CONbits.ON )
 	{
-		int16_t wTemp = ADERR;
+		int16_t wTemp = (int16_t) ADERR;
 		if( wTemp < 0 )
 			wTemp = -wTemp;
 		wTemp <<= 6;
@@ -308,8 +300,9 @@ void __interrupt( irq( IRQ_ADT ), base( 8 ), high_priority ) prvADCThresholdISR(
 		
 		ADCON0bits.GO = 1;
 	}
-	else
+	else if( RA5PPS )
 	{
+		//RA5 is not configured as GPIO, must have been used for PWM.
 		//Notify the task that the ADC operation is complete
 		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 		(void) xTaskNotifyFromISR( xHandleCalibrate, measureEVENT_ADC_READY, eSetBits, &xHigherPriorityTaskWoken );	//Never returns anything but pdPASS with eSetBits
@@ -325,16 +318,22 @@ void __interrupt( irq( IRQ_SMT1PWA ), base( 8 ), high_priority ) prvSwitchISR( v
 	if( SMT1CPW >= 0xFFFF )
 	{
 		//Longpress
-		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-		(void) xTaskNotifyFromISR( xHandleCalibrate, measureEVENT_BUTTON_LONGPRESS, eSetBits, &xHigherPriorityTaskWoken );	//Never returns anything but pdPASS with eSetBits
-		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+		ucButtonEvent = measureEVENT_BUTTON_LONGPRESS;
 	}
 	else
 	{
 		//Shortpress
-		T4CONbits.ON = 0;	//Disable indicator. This will prevent the ADT IRQ from setting the GO bit again, therefore stopping the measurement.
-		//The ADT IRQ will notify the task.
+		//Could separate this out, as EVENT_BUTTON_SHORTPRESS is disregarded when T4 is disabled. This solution saves program space, though.
+		ucButtonEvent = measureEVENT_BUTTON_SHORTPRESS;
 	}
+	
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	(void) xTaskNotifyFromISR( xHandleCalibrate, ucButtonEvent, eSetBits, &xHigherPriorityTaskWoken );	//Never returns anything but pdPASS with eSetBits
+	portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+	
+	if( ucButtonEvent & measureEVENT_BUTTON_SHORTPRESS )
+		T4CONbits.ON = 0;	//Disable indicator. This will prevent the ADT IRQ from setting the GO bit again, therefore stopping the measurement.
+	//The ADT IRQ will notify the task.
 }
 
 void vMeasureInitialize( void )

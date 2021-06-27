@@ -66,5 +66,4 @@ __reentrant void PIN_MANAGER_Initialize(void)
 	RC7PPS = 0x15;		//RC7->UART1:RTS1
 	I2C1SCLPPS = 0x13;	//RC3->I2C1:SCL1
 	U1CTSPPS = 0x14;	//RC4->UART1:CTS1
-	RA5PPS = 0x0D;		//RA5->PWM5:PWM5;
 }
